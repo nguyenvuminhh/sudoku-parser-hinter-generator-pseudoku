@@ -6,6 +6,9 @@ Pseudoku is a client-only Sudoku workspace.
 
 - App: static-exported Next.js in `frontend`.
 - Production: `npm run build` in `frontend`, then host `frontend/out` as static files.
+- Vercel builds from the repository root using `vercel.json`; keep the tracked
+  puzzle corpus available to the build. Pushes to `main` deploy automatically
+  to `https://pseudoku.duckdns.org`; pull requests receive preview deployments.
 - All puzzle selection, validation, solving, hints, and image parsing run locally.
 - Do not introduce accounts, databases, application backends, external APIs, or cloud saves.
 

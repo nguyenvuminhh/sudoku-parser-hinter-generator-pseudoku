@@ -554,6 +554,142 @@ FallbackHint fbAlsXZ(const Grid &g)
     return s;
 }
 
+// AIC (Alternating Inference Chain): nodes are candidates (cell, digit) joined
+// by alternating strong/weak inferences, starting and ending on strong links,
+// which proves "endpoint0 OR endpointK" is true. Any candidate weakly linked to
+// *both* endpoints is therefore false. Generalizes XY-Chain / X-Chain /
+// Skyscraper / Two-String-Kite, so it runs last and catches what they miss.
+FallbackHint fbAic(const Grid &g)
+{
+    FallbackHint s;
+    struct Nd { int r, c, d; };
+    std::vector<Nd> nodes;
+    int idx[9][9][10];
+    for (int r = 0; r < 9; ++r)
+        for (int c = 0; c < 9; ++c)
+            for (int d = 1; d <= 9; ++d)
+                idx[r][c][d] = -1;
+    for (int r = 0; r < 9; ++r)
+        for (int c = 0; c < 9; ++c)
+            for (int d = 1; d <= 9; ++d)
+                if (g.hasNote(r, c, d))
+                {
+                    idx[r][c][d] = (int)nodes.size();
+                    nodes.push_back({r, c, d});
+                }
+    const int N = (int)nodes.size();
+
+    // Precompute strong/weak adjacency. A strong link ("if one is false the
+    // other is true") comes from a bivalue cell or a conjugate pair (a digit
+    // confined to two cells of a unit). A weak link ("if one is true the other
+    // is false") comes from sharing a cell or being peers on the same digit.
+    std::vector<std::vector<int>> strongAdj(N), weakAdj(N);
+    for (int i = 0; i < N; ++i)
+    {
+        const Nd &n = nodes[i];
+        for (int d = 1; d <= 9; ++d)
+            if (d != n.d && idx[n.r][n.c][d] >= 0)
+                weakAdj[i].push_back(idx[n.r][n.c][d]);
+        for (int r = 0; r < 9; ++r)
+            for (int c = 0; c < 9; ++c)
+                if (!(r == n.r && c == n.c) && idx[r][c][n.d] >= 0 && seesRC(n.r, n.c, r, c))
+                    weakAdj[i].push_back(idx[r][c][n.d]);
+        if (g.getNotes(n.r, n.c).count() == 2)
+            for (int d = 1; d <= 9; ++d)
+                if (d != n.d && idx[n.r][n.c][d] >= 0)
+                    strongAdj[i].push_back(idx[n.r][n.c][d]);
+        {
+            int cnt = 0, o = -1;
+            for (int c = 0; c < 9; ++c)
+                if (g.hasNote(n.r, c, n.d)) { ++cnt; if (c != n.c) o = c; }
+            if (cnt == 2) strongAdj[i].push_back(idx[n.r][o][n.d]);
+        }
+        {
+            int cnt = 0, o = -1;
+            for (int r = 0; r < 9; ++r)
+                if (g.hasNote(r, n.c, n.d)) { ++cnt; if (r != n.r) o = r; }
+            if (cnt == 2) strongAdj[i].push_back(idx[o][n.c][n.d]);
+        }
+        {
+            int br = (n.r / 3) * 3, bc = (n.c / 3) * 3, cnt = 0, orr = -1, oc = -1;
+            for (int dr = 0; dr < 3; ++dr)
+                for (int dc = 0; dc < 3; ++dc)
+                {
+                    int r = br + dr, c = bc + dc;
+                    if (g.hasNote(r, c, n.d)) { ++cnt; if (!(r == n.r && c == n.c)) { orr = r; oc = c; } }
+                }
+            if (cnt == 2) strongAdj[i].push_back(idx[orr][oc][n.d]);
+        }
+    }
+
+    auto weakLinked = [&](int a, int b) {
+        const Nd &x = nodes[a], &y = nodes[b];
+        if (x.r == y.r && x.c == y.c) return x.d != y.d;
+        if (x.d == y.d) return seesRC(x.r, x.c, y.r, y.c);
+        return false;
+    };
+
+    long budget = 3000000; // bound the chain search per hint request
+    std::vector<char> inChain(N, 0);
+    std::vector<int> chain;
+    std::function<bool(int, int, bool, int)> dfs = [&](int startI, int cur, bool needStrong, int linkCount) -> bool {
+        if (linkCount > 12 || --budget < 0)
+            return false;
+        const auto &adj = needStrong ? strongAdj[cur] : weakAdj[cur];
+        for (int nb : adj)
+        {
+            if (inChain[nb])
+                continue;
+            chain.push_back(nb);
+            inChain[nb] = 1;
+            const int nlc = linkCount + 1;
+            // After an odd number of links (>=3) the chain just crossed a strong
+            // link, so `nb` is "on": endpoints are proven to be "start OR nb".
+            if (needStrong && nlc >= 3 && (nlc % 2 == 1))
+            {
+                FallbackHint cand;
+                for (int X = 0; X < N; ++X)
+                {
+                    if (X == startI || X == nb || inChain[X])
+                        continue;
+                    if (weakLinked(X, startI) && weakLinked(X, nb))
+                        addElim(cand, nodes[X].r, nodes[X].c, nodes[X].d);
+                }
+                if (!cand.eliminations.empty())
+                {
+                    s.found = true;
+                    s.technique = "AIC";
+                    s.difficulty = 21;
+                    for (int ci : chain)
+                        pushUnique(s.causalCells, nodes[ci].r * 9 + nodes[ci].c);
+                    s.eliminationCells = cand.eliminationCells;
+                    s.eliminations = cand.eliminations;
+                    return true;
+                }
+            }
+            if (dfs(startI, nb, !needStrong, nlc))
+                return true;
+            chain.pop_back();
+            inChain[nb] = 0;
+        }
+        return false;
+    };
+
+    for (int i = 0; i < N; ++i)
+    {
+        if (strongAdj[i].empty())
+            continue; // an AIC must begin with a strong link
+        chain.clear();
+        chain.push_back(i);
+        inChain[i] = 1;
+        const bool found = dfs(i, i, true, 0);
+        inChain[i] = 0;
+        if (found)
+            return s;
+    }
+    return s;
+}
+
 // Tries the advanced techniques simplest-first; returns the first that fires.
 FallbackHint runFallback(const Grid &g)
 {
@@ -565,6 +701,8 @@ FallbackHint runFallback(const Grid &g)
     if ((s = fbXyChain(g)).found)
         return s;
     if ((s = fbAlsXZ(g)).found)
+        return s;
+    if ((s = fbAic(g)).found)
         return s;
     return s;
 }

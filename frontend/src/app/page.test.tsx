@@ -155,7 +155,8 @@ describe("PseudokuPage", () => {
     await loadSampleAndConfirm(user);
     // Turn quick fill off so digit presses become notes, then pick the mode.
     await toggleQuickFill(user);
-    await user.click(screen.getByRole("button", { name: /^corner$/i }));
+    // Normal and Corner are merged into one toggle (corner is the default note).
+    await user.click(screen.getByRole("button", { name: /switch to corner notes/i }));
     await user.click(cell(1, 1));
     await user.click(screen.getByRole("button", { name: "5" }));
 
@@ -229,8 +230,8 @@ describe("PseudokuPage", () => {
     render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
-    // Corner-note mode; quick fill stays on by default after confirming.
-    await user.click(screen.getByRole("button", { name: /^corner$/i }));
+    // Corner-note mode (merged Normal/Corner toggle); quick fill stays on by default.
+    await user.click(screen.getByRole("button", { name: /switch to corner notes/i }));
 
     // Build the group with Alt-click, lock the digit, then a plain click inside
     // the group marks all of it at once.

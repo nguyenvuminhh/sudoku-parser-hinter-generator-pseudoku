@@ -72,12 +72,13 @@ export function parseSavedSession(raw: string | null): SavedSession | null {
     if (!isNotes(session.notes)) {
       return null;
     }
-    marks = { corner: createEmptyNotes(), center: session.notes, colors: createEmptyColors() };
+    marks = { corner: createEmptyNotes(), center: session.notes, auto: createEmptyNotes(), colors: createEmptyColors() };
   } else {
     if (!isMarks(session.marks)) {
       return null;
     }
-    marks = session.marks;
+    // `auto` was added later; default it for sessions saved before then.
+    marks = { ...session.marks, auto: isNotes(session.marks.auto) ? session.marks.auto : createEmptyNotes() };
   }
 
   return {

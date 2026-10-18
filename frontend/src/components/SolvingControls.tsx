@@ -19,15 +19,16 @@ export function SolvingControls({
   canUndo,
   canRedo,
   entryMode,
-  hasAnyNotes,
+  autoFill,
   quickFillMode,
   isValid,
   canShare,
   onUndo,
   onRedo,
   onEntryModeChange,
+  onToggleNoteMode,
   onToggleQuickFill,
-  onToggleAllNotes,
+  onToggleAutoFill,
   onCheck,
   onShare,
   onNewPuzzle
@@ -36,15 +37,16 @@ export function SolvingControls({
   canUndo: boolean;
   canRedo: boolean;
   entryMode: EntryMode;
-  hasAnyNotes: boolean;
+  autoFill: boolean;
   quickFillMode: boolean;
   isValid: boolean;
   canShare: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onEntryModeChange: (mode: EntryMode) => void;
+  onToggleNoteMode: () => void;
   onToggleQuickFill: () => void;
-  onToggleAllNotes: () => void;
+  onToggleAutoFill: () => void;
   onCheck: () => void;
   onShare: () => void;
   onNewPuzzle: () => void;
@@ -69,9 +71,9 @@ export function SolvingControls({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [moreOpen]);
 
-  const modes: Array<{ mode: EntryMode; label: string; icon: React.ReactNode }> = [
-    { mode: "value", label: "Normal", icon: <Pencil size={16} /> },
-    { mode: "corner", label: "Corner", icon: <PenLine size={16} /> },
+  // Center and Color are explicit, secondary choices; Normal⇄Corner is the
+  // primary toggle handled separately below.
+  const secondaryModes: Array<{ mode: EntryMode; label: string; icon: React.ReactNode }> = [
     { mode: "center", label: "Center", icon: <AlignCenter size={16} /> },
     { mode: "color", label: "Color", icon: <Palette size={16} /> }
   ];
@@ -102,7 +104,17 @@ export function SolvingControls({
       <div className="eb-div" aria-hidden="true" />
 
       <div className="eb-group modes">
-        {modes.map((entry) => (
+        <button
+          type="button"
+          className={entryMode === "corner" ? "eb-btn mode on" : "eb-btn mode"}
+          aria-pressed={entryMode === "corner"}
+          aria-label={entryMode === "corner" ? "Switch to normal entry" : "Switch to corner notes"}
+          onClick={onToggleNoteMode}
+        >
+          {entryMode === "corner" ? <PenLine size={16} /> : <Pencil size={16} />}
+          <span>{entryMode === "corner" ? "Corner" : "Normal"}</span>
+        </button>
+        {secondaryModes.map((entry) => (
           <button
             key={entry.mode}
             type="button"
@@ -132,12 +144,12 @@ export function SolvingControls({
         <PuzzleActions
           variant="mobile"
           busyLabel={busyLabel}
-          hasAnyNotes={hasAnyNotes}
+          autoFill={autoFill}
           quickFillMode={quickFillMode}
           isValid={isValid}
           canShare={canShare}
           onToggleQuickFill={onToggleQuickFill}
-          onToggleAllNotes={onToggleAllNotes}
+          onToggleAutoFill={onToggleAutoFill}
           onCheck={onCheck}
           onShare={onShare}
           onQuit={onNewPuzzle}

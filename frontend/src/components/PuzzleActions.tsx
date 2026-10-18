@@ -5,12 +5,12 @@ import { ListChecks, Pen, Power, Share2, Zap } from "lucide-react";
 type PuzzleActionsProps = {
   variant: "desktop" | "mobile";
   busyLabel: string | null;
-  hasAnyNotes: boolean;
+  autoFill: boolean;
   quickFillMode: boolean;
   isValid: boolean;
   canShare: boolean;
   onToggleQuickFill: () => void;
-  onToggleAllNotes: () => void;
+  onToggleAutoFill: () => void;
   onCheck: () => void;
   onShare: () => void;
   onQuit: () => void;
@@ -23,12 +23,12 @@ function buttonClass(active = false, danger = false) {
 export function PuzzleActions({
   variant,
   busyLabel,
-  hasAnyNotes,
+  autoFill,
   quickFillMode,
   isValid,
   canShare,
   onToggleQuickFill,
-  onToggleAllNotes,
+  onToggleAutoFill,
   onCheck,
   onShare,
   onQuit
@@ -51,11 +51,11 @@ export function PuzzleActions({
       </button>
       <button
         type="button"
-        className={buttonClass(hasAnyNotes)}
-        aria-pressed={hasAnyNotes}
+        className={buttonClass(autoFill)}
+        aria-pressed={autoFill}
         aria-label="Auto fill"
-        disabled={!hasAnyNotes && !isValid}
-        onClick={onToggleAllNotes}
+        disabled={!autoFill && !isValid}
+        onClick={onToggleAutoFill}
       >
         <Pen size={16} />
         <span>Auto fill</span>

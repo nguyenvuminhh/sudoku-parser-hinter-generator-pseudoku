@@ -12,6 +12,9 @@ export type CellColors = Array<number | null>;
 export type BoardMarks = {
   corner: NotesGrid;
   center: NotesGrid;
+  // Auto-fill candidate layer (corner-style). Independent of the manual corner
+  // notes so toggling auto-fill never destroys the player's own pencil marks.
+  auto: NotesGrid;
   colors: CellColors;
 };
 
@@ -71,11 +74,16 @@ export function createEmptyColors(): CellColors {
 }
 
 export function createEmptyMarks(): BoardMarks {
-  return { corner: createEmptyNotes(), center: createEmptyNotes(), colors: createEmptyColors() };
+  return { corner: createEmptyNotes(), center: createEmptyNotes(), auto: createEmptyNotes(), colors: createEmptyColors() };
 }
 
 export function cloneMarks(marks: BoardMarks): BoardMarks {
-  return { corner: cloneNotes(marks.corner), center: cloneNotes(marks.center), colors: [...marks.colors] };
+  return {
+    corner: cloneNotes(marks.corner),
+    center: cloneNotes(marks.center),
+    auto: cloneNotes(marks.auto),
+    colors: [...marks.colors]
+  };
 }
 
 export function createBoardSnapshot(
@@ -183,7 +191,11 @@ export function setCellValueWithMarks(
     return { grid, marks };
   }
   const corner = setCellValueWithNotes(grid, marks.corner, index, value);
-  return { grid: center.grid, marks: { corner: corner.notes, center: center.notes, colors: [...marks.colors] } };
+  const auto = setCellValueWithNotes(grid, marks.auto, index, value);
+  return {
+    grid: center.grid,
+    marks: { corner: corner.notes, center: center.notes, auto: auto.notes, colors: [...marks.colors] }
+  };
 }
 
 /**
@@ -439,6 +451,7 @@ export function marksEqual(left: BoardMarks, right: BoardMarks): boolean {
   return (
     notesEqual(left.corner, right.corner) &&
     notesEqual(left.center, right.center) &&
+    notesEqual(left.auto, right.auto) &&
     left.colors.length === right.colors.length &&
     left.colors.every((color, index) => color === right.colors[index])
   );

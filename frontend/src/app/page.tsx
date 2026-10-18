@@ -70,7 +70,7 @@ export default function PseudokuPage() {
             <div className="board-wrap">
               <SudokuBoard
                 grid={game.grid}
-                marks={game.marks}
+                marks={game.displayMarks}
                 givenMask={game.givenMask}
                 isSolving={game.isSolving}
                 ghost={!game.isSolving && game.filledCount === 0}
@@ -119,15 +119,16 @@ export default function PseudokuPage() {
                   canUndo={game.undoStack.length > 0}
                   canRedo={game.redoStack.length > 0}
                   entryMode={game.entryMode}
-                  hasAnyNotes={game.hasAnyNotes}
+                  autoFill={game.autoFill}
                   quickFillMode={game.quickFillMode}
                   isValid={game.validation.valid}
                   canShare={game.canSharePuzzle}
                   onUndo={game.undo}
                   onRedo={game.redo}
                   onEntryModeChange={game.changeEntryMode}
+                  onToggleNoteMode={game.toggleNoteMode}
                   onToggleQuickFill={game.toggleQuickFillMode}
-                  onToggleAllNotes={game.toggleAllNotes}
+                  onToggleAutoFill={game.toggleAutoFill}
                   onCheck={game.check}
                   onShare={() => void game.copyShareLink()}
                   onNewPuzzle={game.reset}
@@ -181,7 +182,7 @@ export default function PseudokuPage() {
               currentHint={game.currentHint}
               canApplyCurrentHint={game.canApplyCurrentHint}
               filledCount={game.filledCount}
-              hasAnyNotes={game.hasAnyNotes}
+              autoFill={game.autoFill}
               quickFillMode={game.quickFillMode}
               isValid={game.validation.valid}
               canShare={game.canSharePuzzle}
@@ -189,7 +190,7 @@ export default function PseudokuPage() {
               history={game.history}
               settings={game.settings}
               onToggleQuickFill={game.toggleQuickFillMode}
-              onToggleAllNotes={game.toggleAllNotes}
+              onToggleAutoFill={game.toggleAutoFill}
               onCheck={game.check}
               onShare={() => void game.copyShareLink()}
               onQuit={game.reset}

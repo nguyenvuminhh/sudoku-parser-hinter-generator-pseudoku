@@ -20,7 +20,7 @@ export function SolvingPanel({
   currentHint,
   canApplyCurrentHint,
   filledCount,
-  hasAnyNotes,
+  autoFill,
   quickFillMode,
   isValid,
   canShare,
@@ -28,7 +28,7 @@ export function SolvingPanel({
   history,
   settings,
   onToggleQuickFill,
-  onToggleAllNotes,
+  onToggleAutoFill,
   onCheck,
   onShare,
   onQuit,
@@ -41,7 +41,7 @@ export function SolvingPanel({
   currentHint: HintResponse | null;
   canApplyCurrentHint: boolean;
   filledCount: number;
-  hasAnyNotes: boolean;
+  autoFill: boolean;
   quickFillMode: boolean;
   isValid: boolean;
   canShare: boolean;
@@ -49,7 +49,7 @@ export function SolvingPanel({
   history: HintResponse[];
   settings: Settings;
   onToggleQuickFill: () => void;
-  onToggleAllNotes: () => void;
+  onToggleAutoFill: () => void;
   onCheck: () => void;
   onShare: () => void;
   onQuit: () => void;
@@ -66,12 +66,12 @@ export function SolvingPanel({
       <PuzzleActions
         variant="desktop"
         busyLabel={busyLabel}
-        hasAnyNotes={hasAnyNotes}
+        autoFill={autoFill}
         quickFillMode={quickFillMode}
         isValid={isValid}
         canShare={canShare}
         onToggleQuickFill={onToggleQuickFill}
-        onToggleAllNotes={onToggleAllNotes}
+        onToggleAutoFill={onToggleAutoFill}
         onCheck={onCheck}
         onShare={onShare}
         onQuit={onQuit}

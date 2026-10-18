@@ -38,19 +38,25 @@ JSON shape (consumed by `frontend/src/lib/hints.ts`):
 
 Cell index = `row * 9 + col` (0-based), matching the frontend's `cellToIndex`.
 
-l2sg's solver is capped at `LEV_3_LOGIC`, so it never returns a guess/brute-force
-step. Techniques covered: naked/hidden singles–quads, locked candidates
-(pointing/claiming), X-Wing, Swordfish, Jellyfish, XY-Wing, W-Wing, Skyscraper,
-2-String Kite.
+`getHint` runs single-step techniques in strict difficulty order, simplest-first,
+and returns the first that makes progress. Rather than l2sg's monolithic `solve()`,
+it calls l2sg's individual technique functions in an explicit order so that
+**Locked Candidates run before Hidden Single** (their eliminations are often what
+reveal a hidden single). The l2sg techniques used (ranks 1–16): naked single,
+locked candidates (pointing/claiming), hidden single, naked/hidden pairs–quads,
+X-Wing, Swordfish, Jellyfish, Skyscraper, 2-String Kite, XY-Wing, W-Wing. None of
+them guess (SimpleGuess/BruteForce are never run; a `bruteForce` solution count is
+used only to flag an unsolvable board).
 
-When l2sg finds no step, `bindings.cpp` runs its own advanced
-**elimination-only** techniques (simplest-first) before giving up: **XYZ-Wing**,
-**Unique Rectangle (Type 1)**, **XY-Chain**, and **ALS-XZ**. These are not in
-l2sg's `Technique` enum, so they emit the JSON directly (with `placement: null`)
-and use difficulty ranks 17–20. Each was validated for soundness — never
+When no l2sg technique applies, `bindings.cpp` runs its own advanced
+**elimination-only** techniques (simplest-first) before giving up: **XYZ-Wing**
+(17), **Unique Rectangle, Type 1** (18), **XY-Chain** (19), **ALS-XZ** (20), and
+**AIC** (21, alternating inference chains — generalizes XY-Chain / X-Chain /
+Skyscraper). These are not in l2sg's `Technique` enum, so they emit the JSON
+directly with `placement: null`. Each was validated for soundness — never
 removing a candidate that belongs to the solution — against tens of thousands of
-rated puzzles (see `getHint`'s fallback section). The Unique Rectangle technique
-assumes a unique solution, which holds for proper puzzles.
+rated puzzles. The Unique Rectangle technique assumes a unique solution, which
+holds for proper puzzles.
 
 ## Rebuilding
 

@@ -44,6 +44,7 @@ import {
   createBoardSnapshot,
   createEmptyGrid,
   createEmptyMarks,
+  createEmptyNotes,
   createGivenMask,
   findNextCellWithValue,
   findNextInputIndex,
@@ -100,6 +101,9 @@ export function useSudokuGame() {
   const [entryMode, setEntryMode] = useState<EntryMode>("value");
   // Remembers the last note mode so the Normal/Note toggle can restore it.
   const [noteType, setNoteType] = useState<NoteEntryMode>("corner");
+  // Auto-fill overlays computed candidates (corner-style) as a separate layer
+  // the player can prune without touching their own notes. Off by default.
+  const [autoFill, setAutoFill] = useState(false);
   const [quickFillMode, setQuickFillMode] = useState(false);
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [puzzleText, setPuzzleText] = useState("");
@@ -165,8 +169,18 @@ export function useSudokuGame() {
   const selectedIsGiven = isSolving && givenMask[selectedIndex];
   const selectionAllGiven = isSolving && selectedIndexes.every((index) => givenMask[index]);
   const selectionAllFilled = selectedIndexes.every((index) => grid[index] !== null);
-  const selectedNotes =
-    entryMode === "corner" ? (marks.corner[selectedIndex] ?? []) : (marks.center[selectedIndex] ?? []);
+  // While auto-fill is on the board shows the auto layer (corner-style) in place
+  // of the player's manual notes; their corner/center notes are kept underneath.
+  const displayMarks = useMemo<BoardMarks>(
+    () =>
+      autoFill ? { corner: marks.auto, center: createEmptyNotes(), auto: marks.auto, colors: marks.colors } : marks,
+    [autoFill, marks]
+  );
+  const selectedNotes = autoFill
+    ? (marks.auto[selectedIndex] ?? [])
+    : entryMode === "corner"
+      ? (marks.corner[selectedIndex] ?? [])
+      : (marks.center[selectedIndex] ?? []);
   const hasAnyNotes = marks.corner.some((notes) => notes.length > 0) || marks.center.some((notes) => notes.length > 0);
   const activeHighlightDigit = quickFillDigit ?? (selectedIndex >= 0 ? grid[selectedIndex] : null);
   const validation = useMemo(() => validateSudokuGrid(grid), [grid]);
@@ -180,13 +194,13 @@ export function useSudokuGame() {
   const conflictIndexes = useMemo(() => collectConflictIndexes(validation.conflicts), [validation]);
   const incorrectIndexes = useMemo(() => new Set(checkResult?.incorrectIndexes ?? []), [checkResult]);
   const matchingHighlights = useMemo(() => {
-    const center = collectMatchingDigitHighlights(grid, marks.center, activeHighlightDigit);
-    const corner = collectMatchingDigitHighlights(grid, marks.corner, activeHighlightDigit);
+    const center = collectMatchingDigitHighlights(grid, displayMarks.center, activeHighlightDigit);
+    const corner = collectMatchingDigitHighlights(grid, displayMarks.corner, activeHighlightDigit);
     return {
       valueIndexes: new Set(center.valueIndexes),
       noteIndexes: new Set([...center.noteIndexes, ...corner.noteIndexes])
     };
-  }, [activeHighlightDigit, grid, marks]);
+  }, [activeHighlightDigit, grid, displayMarks]);
   const primaryIndexes = useMemo(() => collectHintCells(currentHint, "primary"), [currentHint]);
   const relatedIndexes = useMemo(() => collectHintCells(currentHint, "related"), [currentHint]);
   const eliminationIndexes = useMemo(() => collectHintCells(currentHint, "elimination"), [currentHint]);
@@ -494,7 +508,8 @@ export function useSudokuGame() {
         return;
       }
       const liveMarks = marksRef.current;
-      commitMarks({ ...liveMarks, [entryMode]: toggleCellNote(liveMarks[entryMode], gridRef.current, index, quickFillDigit) });
+      const layer = autoFill ? "auto" : entryMode;
+      commitMarks({ ...liveMarks, [layer]: toggleCellNote(liveMarks[layer], gridRef.current, index, quickFillDigit) });
       return;
     }
 
@@ -554,6 +569,12 @@ export function useSudokuGame() {
       return;
     }
 
+    // Auto-fill is its own layer: edits land there and leave the manual notes be.
+    if (autoFill) {
+      commitMarks({ ...liveMarks, auto: toggleNoteOnCells(liveMarks.auto, liveGrid, emptyTargets, digit) });
+      return;
+    }
+
     // A digit lives in either the corner or the center layer, never both: drop
     // it from the opposite layer on the cells we just touched.
     const targetSet = new Set(emptyTargets);
@@ -580,6 +601,13 @@ export function useSudokuGame() {
     }
 
     const targetSet = new Set(emptyTargets);
+    if (autoFill) {
+      const nextAuto = liveMarks.auto.map((cellNotes, index) =>
+        !targetSet.has(index) || cellNotes.includes(digit) ? cellNotes : [...cellNotes, digit].sort((a, b) => a - b)
+      );
+      commitMarks({ ...liveMarks, auto: nextAuto });
+      return;
+    }
     const otherLayer = layer === "corner" ? "center" : "corner";
     const nextLayer = liveMarks[layer].map((cellNotes, index) => {
       if (!targetSet.has(index) || cellNotes.includes(digit)) {
@@ -609,7 +637,7 @@ export function useSudokuGame() {
     }
 
     const liveMarks = marksRef.current;
-    const layer = entryMode === "corner" ? "corner" : "center";
+    const layer = autoFill ? "auto" : entryMode === "corner" ? "corner" : "center";
     const nextLayer = liveMarks[layer].map((cellNotes, index) => (selectedIndexes.includes(index) ? [] : cellNotes));
     commitMarks({ ...liveMarks, [layer]: nextLayer });
   }
@@ -708,6 +736,26 @@ export function useSudokuGame() {
     if (currentHint.action.type === "eliminate" && currentHint.action.eliminations.length > 0) {
       const liveGrid = gridRef.current;
       const liveMarks = marksRef.current;
+
+      // With auto-fill on, eliminations are crossed off the auto layer that the
+      // player is actually looking at.
+      if (autoFill) {
+        const nextMarks = {
+          ...liveMarks,
+          auto: applyHintEliminationsToNotes(liveGrid, liveMarks.auto, currentHint.action.eliminations)
+        };
+        const firstCell = currentHint.action.eliminations[0].cell;
+        if (hasBoardStateChanged(liveGrid, nextMarks)) {
+          recordUndoSnapshot();
+        }
+        updateGrid(liveGrid, nextMarks);
+        selectOnly(cellToIndex(firstCell));
+        setMessages([
+          `Applied ${currentHint.action.eliminations.length} candidate elimination${currentHint.action.eliminations.length === 1 ? "" : "s"}. Request another hint when you are ready.`
+        ]);
+        return;
+      }
+
       const targetLayer = activeNotesLayer(liveMarks);
       const otherLayer: NoteEntryMode = targetLayer === "corner" ? "center" : "corner";
       const nextMarks = {
@@ -751,7 +799,10 @@ export function useSudokuGame() {
     // pencil marks are passed through so the hint respects work already done and
     // advances past eliminations the player has applied.
     const liveGrid = gridRef.current;
-    const notes = effectiveNotesGrid(liveGrid, marksRef.current, noteType);
+    const liveMarks = marksRef.current;
+    const notes = autoFill
+      ? liveGrid.map((value, index) => (value === null ? (liveMarks.auto[index] ?? []) : []))
+      : effectiveNotesGrid(liveGrid, liveMarks, noteType);
     setBusyLabel("Finding hint");
     try {
       const result = await getHint(gridToPayload(liveGrid), buildCandidateString(liveGrid, notes));
@@ -776,6 +827,7 @@ export function useSudokuGame() {
   function resetSolveProgress() {
     setMarks(createEmptyMarks());
     setEntryMode("value");
+    setAutoFill(false);
     setQuickFillDigit(null);
     setCurrentHint(null);
     setUndoStack([]);
@@ -839,27 +891,34 @@ export function useSudokuGame() {
     setMessages([entryModeMessage(mode)]);
   }
 
-  // Flips between Normal (value) entry and the last-used marking mode.
+  // The primary mode button: flips between Normal (value) entry and Corner notes
+  // (the default note layer). Center and Color are chosen from their own buttons.
   function toggleNoteMode() {
-    changeEntryMode(entryMode === "value" ? noteType : "value");
+    changeEntryMode(entryMode === "corner" ? "value" : "corner");
   }
 
-  // Single toggle: clears every note when any exist, otherwise fills center notes.
-  function toggleAllNotes() {
+  // Independent on/off overlay of computed candidates. The first time it turns on
+  // it fills the (empty) auto layer from the board; turning it off and on again
+  // keeps whatever the player pruned, so their work is never lost.
+  function toggleAutoFill() {
     if (!isSolving) {
-      setMessages(["Start solving before filling notes."]);
+      setMessages(["Start solving before using auto-fill."]);
       return;
     }
 
-    const liveMarks = marksRef.current;
-    if (hasAnyNotes) {
-      commitMarks({ ...liveMarks, corner: liveMarks.corner.map(() => []), center: liveMarks.center.map(() => []) });
-      setMessages(["Removed all notes."]);
-      return;
+    const nextAutoFill = !autoFill;
+    if (nextAutoFill) {
+      const liveMarks = marksRef.current;
+      if (liveMarks.auto.every((notes) => notes.length === 0)) {
+        commitMarks({ ...liveMarks, auto: quickFillNotes(gridRef.current) });
+      }
     }
-
-    commitMarks({ ...liveMarks, corner: quickFillNotes(gridRef.current) });
-    setMessages(["Filled corner notes for all empty cells from the current board."]);
+    setAutoFill(nextAutoFill);
+    setMessages([
+      nextAutoFill
+        ? "Auto-fill on: showing computed candidates. Cross any off and they stay; your own notes are kept underneath."
+        : "Auto-fill off: your own notes are back."
+    ]);
   }
 
   function loadPuzzleFromText() {
@@ -999,6 +1058,7 @@ export function useSudokuGame() {
     // board state
     grid,
     marks,
+    displayMarks,
     givenMask,
     phase,
     isSolving,
@@ -1041,6 +1101,7 @@ export function useSudokuGame() {
     entryMode,
     noteType,
     hasAnyNotes,
+    autoFill,
     quickFillMode,
     quickFillDigit,
     puzzleText,
@@ -1072,7 +1133,7 @@ export function useSudokuGame() {
     toggleQuickFillMode,
     changeEntryMode,
     toggleNoteMode,
-    toggleAllNotes,
+    toggleAutoFill,
     loadPuzzleFromText,
     generatePuzzle,
     loadSample,

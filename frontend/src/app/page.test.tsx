@@ -3,53 +3,18 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTINGS_STORAGE_KEY } from "../hooks/useSettings";
-import type { SupabaseAccountState } from "../hooks/useSupabaseAccount";
 import { SAMPLE_PUZZLE } from "../lib/constants";
 import { decodePuzzleParam, encodePuzzleParam } from "../lib/share-codec";
 import { gridToPayload, parsePuzzleText } from "../lib/sudoku-state";
 
-import SudokuTutorPage from "./page";
+import PseudokuPage from "./page";
 
-const accountHarness = vi.hoisted(() => ({
-  account: {
-    status: "guest" as const,
-    user: null,
-    profile: null,
-    displayName: "Guest",
-    error: null,
-    ensureAccount: vi.fn(async () => null),
-    signInWithEmail: vi.fn(async () => undefined),
-    updateName: vi.fn(async () => undefined),
-    signOut: vi.fn(async () => undefined)
-  } as SupabaseAccountState
-}));
-
-vi.mock("../lib/api", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../lib/api")>();
+vi.mock("../lib/puzzle-services", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/puzzle-services")>();
   return {
     ...actual,
     requestGeneratedPuzzle: vi.fn(),
     recognizeImage: vi.fn()
-  };
-});
-
-vi.mock("../hooks/useSupabaseAccount", () => ({
-  useSupabaseAccount: () => accountHarness.account
-}));
-
-vi.mock("../lib/supabase", () => {
-  return {
-    createBrowserSupabaseClient: vi.fn(() => ({ from: vi.fn(), rpc: vi.fn() }))
-  };
-});
-
-vi.mock("../lib/supabase-repository", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../lib/supabase-repository")>();
-  return {
-    ...actual,
-    saveSolveRecord: vi.fn(),
-    fetchDifficultyLeaderboard: vi.fn(),
-    fetchPersonalStats: vi.fn()
   };
 });
 
@@ -71,12 +36,8 @@ vi.mock("../hooks/useHintEngine", () => ({
   })
 }));
 
-const api = await import("../lib/api");
+const api = await import("../lib/puzzle-services");
 const requestGeneratedPuzzleMock = vi.mocked(api.requestGeneratedPuzzle);
-const repository = await import("../lib/supabase-repository");
-const saveSolveRecordMock = vi.mocked(repository.saveSolveRecord);
-const fetchDifficultyLeaderboardMock = vi.mocked(repository.fetchDifficultyLeaderboard);
-const fetchPersonalStatsMock = vi.mocked(repository.fetchPersonalStats);
 const SOLVABLE_PUZZLE =
   "530070000600195000098000060800060003400803001700020006060000280000419005000080079";
 const NEAR_COMPLETE_SOLUTION =
@@ -123,46 +84,9 @@ function rightDrag(targets: HTMLElement[]): boolean {
   return wasNotCanceled;
 }
 
-describe("SudokuTutorPage", () => {
+describe("PseudokuPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    accountHarness.account.status = "guest";
-    accountHarness.account.user = null;
-    accountHarness.account.profile = null;
-    accountHarness.account.displayName = "Guest";
-    accountHarness.account.error = null;
-    vi.mocked(accountHarness.account.ensureAccount).mockResolvedValue(null);
-    vi.mocked(accountHarness.account.signInWithEmail).mockResolvedValue(undefined);
-    saveSolveRecordMock.mockResolvedValue({
-      id: "record-1",
-      userId: "user-1",
-      puzzleFingerprint: "a".repeat(64),
-      difficulty: "custom",
-      elapsedSeconds: 0,
-      hintsUsed: 0,
-      checksUsed: 0,
-      givens: 79,
-      filledByUser: 2,
-      techniques: [],
-      completedAt: "2026-06-16T19:00:00.000Z"
-    });
-    fetchDifficultyLeaderboardMock.mockResolvedValue([
-      {
-        rank: 1,
-        profileId: "user-1",
-        displayName: "Guest",
-        difficulty: "custom",
-        elapsedSeconds: 0,
-        hintsUsed: 0,
-        checksUsed: 0,
-        completedAt: "2026-06-16T19:00:00.000Z"
-      }
-    ]);
-    fetchPersonalStatsMock.mockResolvedValue({
-      completedSolves: 1,
-      bestTimeSeconds: 0,
-      recent: []
-    });
     window.localStorage.clear();
     window.history.pushState({}, "", "/");
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
@@ -173,35 +97,35 @@ describe("SudokuTutorPage", () => {
   });
 
   it("starts in the loading phase with entry guidance", () => {
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
+    expect(within(screen.getByRole("banner", { name: "Pseudoku" })).getByText("Pseudoku")).toBeDefined();
+    expect(within(screen.getByRole("banner", { name: "Pseudoku" })).getByText("Sudoku parser, hinter, generator")).toBeDefined();
     expect(screen.getByRole("grid", { name: /sudoku grid/i })).toBeDefined();
     expect(screen.getByRole("heading", { name: /start a puzzle/i })).toBeDefined();
     expect(screen.getByText(/enter a puzzle on the board or upload/i)).toBeDefined();
   });
 
-  it("starts in guest mode without blocking puzzle setup", () => {
-    render(<SudokuTutorPage />);
+  it("opens puzzle setup without accounts or sign-in controls", () => {
+    render(<PseudokuPage />);
 
-    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /sign in|account|profile/i })).toBeNull();
     expect(screen.getByRole("heading", { name: /start a puzzle/i })).toBeDefined();
   });
 
-  it("sends a sign-in link from the account menu", async () => {
+  it("keeps the solving rail focused on local puzzle tools", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
-    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
-    await user.type(screen.getByLabelText(/email/i), "player@example.com");
-    await user.click(screen.getByRole("button", { name: /send sign-in link/i }));
-
-    expect(accountHarness.account.signInWithEmail).toHaveBeenCalledWith("player@example.com");
-    expect(await screen.findByText(/check your email/i)).toBeDefined();
+    await loadSampleAndConfirm(user);
+    expect(screen.queryByRole("button", { name: /leaderboard|account|sign in/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /get a hint/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^settings$/i })).toBeDefined();
   });
 
   it("types digits into the board and advances to the next empty cell", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await user.keyboard("5");
 
@@ -212,7 +136,7 @@ describe("SudokuTutorPage", () => {
 
   it("loads the sample puzzle and locks givens after confirming", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
 
@@ -226,7 +150,7 @@ describe("SudokuTutorPage", () => {
 
   it("adds corner notes in corner mode", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     // Turn quick fill off so digit presses become notes, then pick the mode.
@@ -240,7 +164,7 @@ describe("SudokuTutorPage", () => {
 
   it("adds center notes in center mode", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await toggleQuickFill(user);
@@ -254,7 +178,7 @@ describe("SudokuTutorPage", () => {
 
   it("paints and clears cell colors in color mode", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await toggleQuickFill(user);
@@ -271,7 +195,7 @@ describe("SudokuTutorPage", () => {
 
   it("erases a cell color with the eraser in color mode under quick fill", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user); // quick fill stays on by default
     await user.click(screen.getByRole("button", { name: /^color$/i }));
@@ -285,7 +209,7 @@ describe("SudokuTutorPage", () => {
 
   it("applies a digit to every cell of an alt-click multi-selection", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await toggleQuickFill(user);
@@ -302,7 +226,7 @@ describe("SudokuTutorPage", () => {
 
   it("marks every cell of a kept multi-selection on a single click", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     // Corner-note mode; quick fill stays on by default after confirming.
@@ -323,7 +247,7 @@ describe("SudokuTutorPage", () => {
 
   it("clears the cell selection when clicking outside the board", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await user.click(cell(2, 3));
     expect(cell(2, 3).className).toContain("selected");
@@ -334,7 +258,7 @@ describe("SudokuTutorPage", () => {
 
   it("shows remaining digit counts and hides them via settings", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     expect(document.querySelector(".keypad .remaining-count")).not.toBeNull();
@@ -347,7 +271,7 @@ describe("SudokuTutorPage", () => {
 
   it("auto-checks entered values when the setting is enabled", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await user.click(screen.getByRole("tab", { name: /import/i }));
     await user.click(screen.getByLabelText(/81-character puzzle/i));
@@ -372,7 +296,7 @@ describe("SudokuTutorPage", () => {
 
   it("places the quick fill digit by clicking cells", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: "5" }));
@@ -383,7 +307,7 @@ describe("SudokuTutorPage", () => {
 
   it("uses right-click for the opposite quick-fill note and fill action", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: "5" }));
@@ -401,7 +325,7 @@ describe("SudokuTutorPage", () => {
 
   it("right-click drags notes only when right-click is the note action", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: "5" }));
@@ -420,7 +344,7 @@ describe("SudokuTutorPage", () => {
 
   it("reports progress when checking a valid board", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     const menu = await openMore(user);
@@ -431,7 +355,7 @@ describe("SudokuTutorPage", () => {
 
   it("resolves a hint from the engine and applies the suggested placement", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: /get a hint/i }));
@@ -447,7 +371,7 @@ describe("SudokuTutorPage", () => {
 
   it("undoes the last board change with the undo button", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: "5" }));
@@ -473,7 +397,7 @@ describe("SudokuTutorPage", () => {
       technique_profile: {},
       attribution: { name: "Ukodus", url: "", license: "", copyright: "" }
     });
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await user.click(screen.getByRole("button", { name: /generate puzzle/i }));
 
@@ -499,9 +423,9 @@ describe("SudokuTutorPage", () => {
       se_rating: 8.6,
       techniques: ["Dynamic Forcing Chain"],
       technique_profile: { "Dynamic Forcing Chain": 1 },
-      attribution: { name: "Puzzle Hint SE bucket corpus", url: "", license: "", copyright: "" }
+      attribution: { name: "Pseudoku SE bucket corpus", url: "", license: "", copyright: "" }
     });
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     expect(screen.getByRole("button", { name: "Extreme" })).toBeDefined();
     expect(screen.getByRole("button", { name: "Advanced 7-8" })).toBeDefined();
@@ -516,7 +440,7 @@ describe("SudokuTutorPage", () => {
     const code = encodePuzzleParam(parsePuzzleText(SAMPLE_PUZZLE));
     window.history.pushState({}, "", `/?p=${code}`);
 
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     expect(await screen.findByText(/loaded shared puzzle/i)).toBeDefined();
     expect(screen.getByRole("button", { name: /start solving/i })).toBeDefined();
@@ -527,7 +451,7 @@ describe("SudokuTutorPage", () => {
     const user = userEvent.setup();
     const writeText = vi.fn(async (_text: string) => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     const menu = await openMore(user);
@@ -544,7 +468,7 @@ describe("SudokuTutorPage", () => {
 
   it("tints the selected cell's row, column, and box peers", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await user.click(cell(1, 1));
 
@@ -556,7 +480,7 @@ describe("SudokuTutorPage", () => {
 
   it("redoes an undone change", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: "5" }));
@@ -572,7 +496,7 @@ describe("SudokuTutorPage", () => {
 
   it("pauses the clock, hides input, and resumes", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: /pause the solve clock/i }));
@@ -591,7 +515,7 @@ describe("SudokuTutorPage", () => {
     const user = userEvent.setup();
     // Blank R9C1 (a 3) and R9C9 (a 9) so two placements finish the board.
     const puzzle = `${NEAR_COMPLETE_SOLUTION.slice(0, 72)}0${NEAR_COMPLETE_SOLUTION.slice(73, 80)}0`;
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await user.click(screen.getByRole("tab", { name: /import/i }));
     await user.click(screen.getByLabelText(/81-character puzzle/i));
@@ -619,12 +543,12 @@ describe("SudokuTutorPage", () => {
     expect(screen.getByText(/solved! you completed the puzzle/i)).toBeDefined();
   });
 
-  it("keeps a completed guest solve local instead of saving to the leaderboard", async () => {
+  it("finishes locally with statistics and no cloud prompts", async () => {
     const user = userEvent.setup();
     const solution =
       "534678912672195348198342567859761423426853791713924856961537284287419635345286179";
     const puzzle = `${solution.slice(0, 72)}0${solution.slice(73, 80)}0`;
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await user.click(screen.getByRole("tab", { name: /import/i }));
     await user.click(screen.getByLabelText(/81-character puzzle/i));
@@ -635,46 +559,15 @@ describe("SudokuTutorPage", () => {
     await user.click(cell(9, 9));
     await user.click(cell(9, 1));
 
-    expect(await screen.findByText(/sign in to save to the leaderboard/i)).toBeDefined();
-    expect(accountHarness.account.ensureAccount).not.toHaveBeenCalled();
-    expect(saveSolveRecordMock).not.toHaveBeenCalled();
-    expect(fetchDifficultyLeaderboardMock).not.toHaveBeenCalled();
-    expect(fetchPersonalStatsMock).not.toHaveBeenCalled();
-  });
-
-  it("saves a completed solve to the leaderboard for a signed-in account", async () => {
-    accountHarness.account.status = "signed-in";
-    accountHarness.account.user = { id: "user-1", email: "user@example.com", isAnonymous: false };
-    accountHarness.account.profile = { id: "user-1", displayName: "Player One", avatarSeed: "user-1" };
-    accountHarness.account.displayName = "Player One";
-    const user = userEvent.setup();
-    const solution =
-      "534678912672195348198342567859761423426853791713924856961537284287419635345286179";
-    const puzzle = `${solution.slice(0, 72)}0${solution.slice(73, 80)}0`;
-    render(<SudokuTutorPage />);
-
-    await user.click(screen.getByRole("tab", { name: /import/i }));
-    await user.click(screen.getByLabelText(/81-character puzzle/i));
-    await user.paste(puzzle);
-    await user.click(screen.getByRole("button", { name: /load puzzle/i }));
-    await user.click(screen.getByRole("button", { name: /start solving/i }));
-    await user.click(screen.getByRole("button", { name: "9" }));
-    await user.click(cell(9, 9));
-    await user.click(cell(9, 1));
-
-    expect(await screen.findByText(/saved to leaderboard/i)).toBeDefined();
-    expect(saveSolveRecordMock).toHaveBeenCalledTimes(1);
-    expect(saveSolveRecordMock.mock.calls[0][1]).toMatchObject({
-      user_id: "user-1",
-      difficulty: "custom",
-      givens: 79,
-      filled_by_user: 2
-    });
+    const dialog = screen.getByRole("dialog", { name: /puzzle solved/i });
+    expect(within(dialog).getByText(/hints used/i)).toBeDefined();
+    expect(within(dialog).queryByText(/sign in|leaderboard|saving|cloud/i)).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /retry|leaderboard/i })).toBeNull();
   });
 
   it("restores the saved session after a reload", async () => {
     const user = userEvent.setup();
-    const first = render(<SudokuTutorPage />);
+    const first = render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
     await user.click(screen.getByRole("button", { name: "5" }));
@@ -682,7 +575,7 @@ describe("SudokuTutorPage", () => {
     expect(within(cell(1, 1)).getByText("5")).toBeDefined();
 
     first.unmount();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     expect(await screen.findByText(/restored your previous session/i)).toBeDefined();
     expect(within(cell(1, 1)).getByText("5")).toBeDefined();
@@ -692,7 +585,7 @@ describe("SudokuTutorPage", () => {
 
   it("keeps the entry toolbar by the board and the strategy rail alongside it", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
 
@@ -707,7 +600,7 @@ describe("SudokuTutorPage", () => {
 
   it("keeps advanced actions in the desktop rail and mobile more menu", async () => {
     const user = userEvent.setup();
-    render(<SudokuTutorPage />);
+    render(<PseudokuPage />);
 
     await loadSampleAndConfirm(user);
 

@@ -21,6 +21,36 @@ test.beforeEach(async ({ page }) => {
   await page.goto("./");
 });
 
+test("plays locally with no account controls or external network requests", async ({ page, context }) => {
+  const origin = new URL(page.url()).origin;
+  const externalRequests: string[] = [];
+  const writeRequests: string[] = [];
+  context.on("request", request => {
+    if (new URL(request.url()).origin !== origin) externalRequests.push(request.url());
+    if (!["GET", "HEAD"].includes(request.method())) writeRequests.push(request.url());
+  });
+  await context.route("**/*", route => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
+  await page.reload();
+  await expect(page).toHaveTitle("Pseudoku");
+  await expect(page.locator("header.top")).toContainText("Pseudoku");
+  await expect(page.getByRole("button", { name: /sign in|account|profile/i })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Import", exact: true }).click();
+  await page.locator('input[type="file"]').setInputFiles(path.resolve("../tests/fixtures/ocr-browser.png"));
+  await expect(page.getByText(/Image read on your device/)).toBeVisible();
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.getByRole("button", { name: "Generate puzzle", exact: true }).click();
+  await page.getByRole("button", { name: /start solving/i }).click();
+  await expect(page.getByRole("button", { name: /leaderboard/i })).toHaveCount(0);
+  await page.getByRole("button", { name: /get a hint/i }).click();
+  await expect(page.getByRole("button", { name: "Apply this step", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Apply this step", exact: true }).click();
+  await page.reload();
+  await expect(page.getByText(/restored your previous session/i)).toBeVisible();
+  expect(externalRequests).toEqual([]);
+  expect(writeRequests).toEqual([]);
+});
+
 test("loads a rated puzzle and a logical hint with static hosting only", async ({ page }) => {
   const result = await page.evaluate(async () => {
     const prefix = location.pathname.replace(/\/$/, "");

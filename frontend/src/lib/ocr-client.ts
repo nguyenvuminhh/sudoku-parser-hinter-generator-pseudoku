@@ -1,4 +1,4 @@
-import type { OcrResponse } from "./api";
+import type { OcrResponse } from "./puzzle-services";
 import { assetUrl } from "./static-assets";
 import { parsePuzzleText, validateSudokuGrid, type OcrCell } from "./sudoku-state";
 

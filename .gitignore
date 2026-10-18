@@ -18,6 +18,7 @@ frontend/playwright-report/
 frontend/node_modules/
 frontend/.env*.local
 frontend/tsconfig.tsbuildinfo
+.vercel/
 
 # Local environment and generated data
 .env

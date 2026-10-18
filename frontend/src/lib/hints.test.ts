@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GeneratedPuzzleResponse, HintResponse } from "./api";
+import type { GeneratedPuzzleResponse, HintResponse } from "./puzzle-services";
 import type { HintResult } from "./hintEngine";
 import {
   buildCandidateString,

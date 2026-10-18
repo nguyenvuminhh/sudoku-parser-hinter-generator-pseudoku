@@ -7,7 +7,7 @@ import {
   recognizeImage,
   type GeneratedPuzzleResponse,
   type HintResponse
-} from "../lib/api";
+} from "../lib/puzzle-services";
 import {
   SAMPLE_PUZZLE,
   entryModeMessage,
@@ -30,7 +30,6 @@ import {
   withoutAppliedEliminations,
   type HintPreview
 } from "../lib/hints";
-import type { LeaderboardDifficulty } from "../lib/leaderboard";
 import { parseSavedSession, serializeSession, SESSION_STORAGE_KEY } from "../lib/session";
 import { decodePuzzleParam, encodePuzzleParam } from "../lib/share-codec";
 import { formatElapsedSeconds } from "../lib/time";
@@ -105,7 +104,6 @@ export function useSudokuGame() {
   const [quickFillDigit, setQuickFillDigit] = useState<number | null>(null);
   const [puzzleText, setPuzzleText] = useState("");
   const [generatedLevel, setGeneratedLevel] = useState<GeneratedLevel>("easy");
-  const [puzzleDifficulty, setPuzzleDifficulty] = useState<LeaderboardDifficulty>("custom");
   const [puzzleRating, setPuzzleRating] = useState<PuzzleRating | null>(null);
   const [paused, setPaused] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -212,32 +210,7 @@ export function useSudokuGame() {
     filledByYou: 81 - givensCount,
     techniques: techniqueNames
   };
-  const solveGivensGrid = useMemo(
-    () => grid.map((value, index) => (givenMask[index] ? value : null)),
-    [givenMask, grid]
-  );
-  const solveCompletionKey = isSolved
-    ? [
-        puzzleDifficulty,
-        gridToPayload(solveGivensGrid),
-        elapsedSeconds,
-        hintsUsed,
-        checksUsed,
-        techniqueNames.join("|")
-      ].join(":")
-    : null;
-  const solveMetadata = solveCompletionKey
-    ? {
-        completionKey: solveCompletionKey,
-        givensGrid: solveGivensGrid,
-        givenMask,
-        difficulty: puzzleDifficulty,
-        elapsedSeconds,
-        hintsUsed,
-        checksUsed,
-        techniques: techniqueNames
-      }
-    : null;
+
 
   // Shared puzzle URLs take precedence over saved sessions; opening a link
   // should show that puzzle even if this browser already has a local game.
@@ -898,7 +871,7 @@ export function useSudokuGame() {
         return;
       }
 
-      loadPuzzle(nextGrid, ["Loaded 81 characters. Review the board, then confirm to lock the givens."], "custom");
+      loadPuzzle(nextGrid, ["Loaded 81 characters. Review the board, then confirm to lock the givens."]);
       setLowConfidence([]);
     } catch (error) {
       setMessages([error instanceof Error ? error.message : "Puzzle text could not be loaded."]);
@@ -913,7 +886,6 @@ export function useSudokuGame() {
       loadPuzzle(
         nextGrid,
         [generatedPuzzleMessage(generated)],
-        generated.requested_level.id as LeaderboardDifficulty,
         generatedPuzzleRating(generated)
       );
       setPuzzleText(generated.puzzle);
@@ -928,13 +900,11 @@ export function useSudokuGame() {
   function loadPuzzle(
     nextGrid: SudokuGrid,
     nextMessages: string[],
-    difficulty: LeaderboardDifficulty = "custom",
     nextPuzzleRating: PuzzleRating | null = null
   ) {
     resetSolveProgress();
     setGrid(nextGrid);
     setGivenMask(createGivenMask(createEmptyGrid()));
-    setPuzzleDifficulty(difficulty);
     setPhase("loading");
     setQuickFillMode(false);
     setPuzzleRating(nextPuzzleRating);
@@ -952,7 +922,7 @@ export function useSudokuGame() {
     try {
       const result = await recognizeImage(file);
       const applied = applyOcrCells(createEmptyGrid(), result.cells);
-      loadPuzzle(applied.grid, result.warnings, "custom");
+      loadPuzzle(applied.grid, result.warnings);
       setLowConfidence(applied.lowConfidence);
     } catch (error) {
       setMessages([error instanceof Error ? error.message : "Image recognition failed."]);
@@ -962,7 +932,7 @@ export function useSudokuGame() {
   }
 
   function loadSample() {
-    loadPuzzle(parsePuzzleText(SAMPLE_PUZZLE), ["Loaded a sample puzzle. Review it, then start solving to lock the givens."], "custom");
+    loadPuzzle(parsePuzzleText(SAMPLE_PUZZLE), ["Loaded a sample puzzle. Review it, then start solving to lock the givens."]);
     setLowConfidence([]);
   }
 
@@ -1063,7 +1033,6 @@ export function useSudokuGame() {
     isSolved,
     showFinishDialog,
     finishStats,
-    solveMetadata,
     paused,
     elapsedSeconds,
     // ui state

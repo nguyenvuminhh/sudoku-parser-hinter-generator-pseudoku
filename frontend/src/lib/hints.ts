@@ -1,4 +1,4 @@
-import type { GeneratedPuzzleResponse, HintResponse } from "./api";
+import type { GeneratedPuzzleResponse, HintResponse } from "./puzzle-services";
 import type { NoteEntryMode } from "./constants";
 import type { HintResult } from "./hintEngine";
 import {

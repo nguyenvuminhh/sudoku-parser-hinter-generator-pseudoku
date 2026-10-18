@@ -1,6 +1,6 @@
 "use client";
 
-import type { HintResponse } from "../lib/api";
+import type { HintResponse } from "../lib/puzzle-services";
 
 export function HistoryPanel({ history }: { history: HintResponse[] }) {
   if (history.length === 0) {

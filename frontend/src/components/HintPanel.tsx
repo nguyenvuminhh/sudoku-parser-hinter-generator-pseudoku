@@ -2,7 +2,7 @@
 
 import { Check } from "lucide-react";
 
-import type { HintResponse } from "../lib/api";
+import type { HintResponse } from "../lib/puzzle-services";
 
 export function HintPanel({
   canApplyHint,

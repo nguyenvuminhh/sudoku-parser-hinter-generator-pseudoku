@@ -1,3 +1,7 @@
+export const APP_NAME = "Pseudoku";
+export const APP_TAGLINE = "Sudoku parser, hinter, generator";
+export const APP_DESCRIPTION = APP_TAGLINE;
+
 export const SAMPLE_PUZZLE =
   "000694832" +
   "004357196" +

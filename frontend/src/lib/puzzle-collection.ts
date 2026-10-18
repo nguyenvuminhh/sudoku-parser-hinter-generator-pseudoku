@@ -1,5 +1,5 @@
-import type { GeneratedPuzzleResponse } from "./api";
-import { GENERATED_LEVELS } from "./constants";
+import type { GeneratedPuzzleResponse } from "./puzzle-services";
+import { APP_NAME, GENERATED_LEVELS } from "./constants";
 import { assetUrl } from "./static-assets";
 
 type Manifest = { levels: Record<string, { name: string; count: number; chunkSize: number }> };
@@ -29,6 +29,6 @@ export async function selectRatedPuzzle(id: string): Promise<GeneratedPuzzleResp
   return {
     puzzle, solution, se_rating: rating, level, requested_level: level, techniques,
     technique_profile: technique ? { [technique]: 1 } : {},
-    attribution: { name: "Puzzle Hint SE bucket corpus", url: "https://github.com/SudokuMonster/SukakuExplainer", license: "Generated puzzle corpus", copyright: "" }
+    attribution: { name: `${APP_NAME} SE bucket corpus`, url: "https://github.com/SudokuMonster/SukakuExplainer", license: "Generated puzzle corpus", copyright: "" }
   };
 }

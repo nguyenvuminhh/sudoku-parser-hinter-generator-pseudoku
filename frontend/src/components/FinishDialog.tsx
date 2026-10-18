@@ -1,9 +1,8 @@
 "use client";
 
-import { CloudOff, Loader2, Lightbulb, ListChecks, PartyPopper, RotateCcw, Timer, Trophy, X } from "lucide-react";
+import { Lightbulb, ListChecks, PartyPopper, RotateCcw, Timer, X } from "lucide-react";
 
 import { formatElapsedSeconds } from "../lib/time";
-import type { SolveSaveStatus } from "../hooks/useSolveRecords";
 
 export type FinishStats = {
   elapsedSeconds: number;
@@ -16,18 +15,10 @@ export type FinishStats = {
 
 export function FinishDialog({
   stats,
-  saveStatus = "idle",
-  saveMessage = "",
-  onRetrySave,
-  onViewLeaderboard,
   onNewPuzzle,
   onClose
 }: {
   stats: FinishStats;
-  saveStatus?: SolveSaveStatus;
-  saveMessage?: string;
-  onRetrySave?: () => void;
-  onViewLeaderboard?: () => void;
   onNewPuzzle: () => void;
   onClose: () => void;
 }) {
@@ -80,28 +71,11 @@ export function FinishDialog({
             </ul>
           </div>
         ) : null}
-        {saveMessage ? (
-          <div className={`finish-save ${saveStatus}`} role="status">
-            {saveStatus === "saving" ? <Loader2 className="spin" size={16} /> : saveStatus === "unavailable" ? <CloudOff size={16} /> : <Trophy size={16} />}
-            <span>{saveMessage}</span>
-            {saveStatus === "error" && onRetrySave ? (
-              <button type="button" onClick={onRetrySave}>
-                Retry
-              </button>
-            ) : null}
-          </div>
-        ) : null}
         <div className="finish-actions">
           <button type="button" className="primary" onClick={onNewPuzzle}>
             <RotateCcw size={17} />
             New puzzle
           </button>
-          {onViewLeaderboard ? (
-            <button type="button" onClick={onViewLeaderboard}>
-              <Trophy size={17} />
-              View leaderboard
-            </button>
-          ) : null}
           <button type="button" onClick={onClose}>
             <X size={17} />
             Keep the board

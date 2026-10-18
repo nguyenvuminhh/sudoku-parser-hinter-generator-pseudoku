@@ -1,146 +1,69 @@
 # Third-Party Notices
 
-Puzzle Hint is released under the MIT License. This file records practical
-attribution and notice-preservation information for important third-party
-software, model assets, and build-time packages used by the project. It is a
-summary for project maintenance and public releases, not legal advice.
+Pseudoku is MIT licensed. This maintenance summary records attribution for
+software and assets shipped with the static app; it is not legal advice.
+Exact package versions are pinned in `frontend/package-lock.json`.
 
-Dependency versions are controlled by:
+## Browser image processing and model
 
-- Python backend: `requirements.txt` and `requirements-model.txt`
-- Frontend: `frontend/package.json` and `frontend/package-lock.json`
-- Rust Sudoku engine wrapper: `tools/sudoku-engine-cli/Cargo.toml`
-- Docker image contents: `Dockerfile`
-
-## Backend Python Runtime
-
-The FastAPI service and OCR/import pipeline use these principal Python
-dependencies and their transitive dependency trees:
-
-| Project | Purpose | SPDX license | Source |
+| Project | Purpose | License | Source |
 | --- | --- | --- | --- |
-| FastAPI | Backend API framework | MIT | https://github.com/fastapi/fastapi |
-| Starlette | ASGI toolkit used by FastAPI | BSD-3-Clause | https://github.com/encode/starlette |
-| Uvicorn | ASGI production server | BSD-3-Clause | https://github.com/encode/uvicorn |
-| python-multipart | Upload/form parsing for FastAPI file uploads | Apache-2.0 | https://github.com/Kludex/python-multipart |
-| httpx | Test client transport dependency for FastAPI/Starlette tests | BSD-3-Clause | https://github.com/encode/httpx |
-| NumPy | Numeric arrays and image preprocessing | BSD-3-Clause | https://github.com/numpy/numpy |
-| OpenCV / opencv-python-headless | Sudoku grid extraction and image processing | Apache-2.0 | https://github.com/opencv/opencv and https://github.com/opencv/opencv-python |
+| OpenCV.js via `@techstark/opencv-js` | Grid extraction and image processing | Apache-2.0 | https://github.com/TechStark/opencv-js and https://github.com/opencv/opencv |
+| ONNX Runtime Web | Local MNIST inference in WebAssembly | MIT | https://github.com/microsoft/onnxruntime |
+| `onnxmodelzoo/mnist-8` | Bundled handwritten digit classifier | Apache-2.0, as listed by the model host | https://huggingface.co/onnxmodelzoo/mnist-8 |
 
-The product direction keeps OpenCV grid extraction as the image import path.
+The model is stored at `frontend/assets/mnist-8.onnx`, with its source/license
+note beside it. ONNX Runtime license and third-party notices are stored in
+`frontend/assets`. The asset build copies these notices and the OpenCV package
+license alongside the generated runtime under `frontend/public/ocr/runtime`.
+All runtime files are served by the static host. Images remain on the device.
 
-## Optional Model Runtime
+## Logical hint engine
 
-The static frontend ships a copy of `mnist-8.onnx` from
-`https://huggingface.co/onnxmodelzoo/mnist-8` (Apache-2.0), stored in
-`frontend/assets/mnist-8.onnx`. It runs locally using `onnxruntime-web` (MIT)
-and OpenCV.js via `@techstark/opencv-js` (Apache-2.0). The build copies the
-model notice, OpenCV license, and ONNX Runtime license/third-party notices
-alongside the browser runtime in `frontend/public/ocr/runtime/`. Those runtime
-files are built from pinned npm dependencies and served from the app's own
-static host; image data is not sent to an external recognition service.
+The l2sg C++ solver is compiled to WebAssembly and shipped as
+`frontend/public/wasm/l2sg.js` and `l2sg.wasm`.
 
-Browser asset preparation uses esbuild (MIT). Browser integration tests use
-Playwright (Apache-2.0); neither is loaded by the running app.
-
-`requirements-model.txt` enables the optional ONNX digit classifier support:
-
-| Project | Purpose | SPDX license | Source |
-| --- | --- | --- | --- |
-| onnxruntime | Runs the optional ONNX digit classifier | MIT | https://github.com/microsoft/onnxruntime |
-| Hugging Face Hub (`huggingface_hub`) | Downloads the optional model in `scripts/download_digit_model.py` | Apache-2.0 | https://github.com/huggingface/huggingface_hub |
-
-## Downloaded ONNX Model
-
-Docker builds run `scripts/download_digit_model.py`, which downloads:
-
-- Model: `onnxmodelzoo/mnist-8`
-- File: `mnist-8.onnx`
-- Local path in the app/Docker image: `data/models/onnx-mnist/mnist-8.onnx`
-- Source: https://huggingface.co/onnxmodelzoo/mnist-8
-- License listed by Hugging Face: Apache-2.0
-
-The repository ignores `data/models/` and `data/img/`, but production Docker
-images include the downloaded ONNX model. The download script also writes
-`data/models/onnx-mnist/LICENSE-NOTE.txt` beside the model inside generated
-runtime artifacts.
-
-## Sudoku Generation Engine
-
-Puzzle generation and advanced human-style Sudoku rating use the Ukodus
-`sudoku-core` Rust engine through the local wrapper in `tools/sudoku-engine-cli`.
-
-- Project: Ukodus sudoku-core
-- Source: https://github.com/kcirtapfromspace/sudoku-core
-- Pinned commit: `ad8f024d507a52eff99fdd8b5173763487b30a31`
-- License: MIT
-- Copyright: Copyright (c) 2026 Patrick Deutsch
-
-The wrapper crate also uses `serde` and `serde_json`, which are commonly
-distributed under MIT OR Apache-2.0. The Docker image compiles the wrapper in a
-Rust build stage and copies only the compiled `sudoku-engine` binary into the
-Python runtime image.
-
-## Sudoku Hint Engine (WebAssembly)
-
-In-browser hints are produced by the `l2sg` C++ logical Sudoku solver compiled
-to WebAssembly via Emscripten. The compiled artifacts are committed to the
-repository at `frontend/public/wasm/l2sg.js` and `frontend/public/wasm/l2sg.wasm`
-and are shipped with the static frontend; the binding and build pipeline live in
-`wasm/`.
-
-- Project: l2sg
 - Source: https://github.com/rafaelfassi/l2sg
 - License: MIT
+- Binding and rebuild instructions: `wasm/`
 
-The Emscripten-generated glue (`l2sg.js`) is produced by the Emscripten SDK
-(MIT / University of Illinois NCSA), which is required only at build time.
+Emscripten-generated glue is produced with the Emscripten SDK (MIT / University
+of Illinois NCSA). That SDK is needed only to rebuild the C++ solver. The local
+TypeScript chain solver and its proof verifier are part of Pseudoku.
 
-## Generated SE Bucket Corpus
+## Puzzle corpus
 
-The baseline runtime corpus at `data/puzzles/serate-buckets` is generated data
-and is committed with the application for simpler deployments. It is produced
-by local scripts that use:
+The checked-in corpus at `data/puzzles/serate-buckets` is generated puzzle data.
+Its provenance includes Tdoku candidate generation and Sukaku Explainer `serate`
+ratings:
 
-- Tdoku candidate generation: https://github.com/t-dillon/tdoku
-- Sukaku Explainer `serate` rating: https://github.com/SudokuMonster/SukakuExplainer
+- https://github.com/t-dillon/tdoku
+- https://github.com/SudokuMonster/SukakuExplainer
 
-Deployments can use the bundled corpus or mount a larger generated corpus beside
-the backend and set `PUZZLE_HINT_SERATE_CORPUS_DIR`.
+Neither generator runs in the app. The build converts the existing corpus into
+static chunks, preserving puzzle solutions and SE ratings.
 
-## Frontend Runtime And Build Dependencies
+## Frontend and build dependencies
 
-The static Next.js frontend is built from `frontend/package.json` and
-`frontend/package-lock.json`. Principal dependencies include:
-
-| Project | Purpose | SPDX license | Source |
+| Project | Purpose | License | Source |
 | --- | --- | --- | --- |
-| Next.js | Static export framework and build system | MIT | https://github.com/vercel/next.js |
-| React | UI runtime | MIT | https://github.com/facebook/react |
-| React DOM | DOM renderer for React | MIT | https://github.com/facebook/react |
-| lucide-react | Icon components | ISC | https://github.com/lucide-icons/lucide |
+| Next.js | Static export and build system | MIT | https://github.com/vercel/next.js |
+| React / React DOM | Browser UI | MIT | https://github.com/facebook/react |
+| lucide-react | Icons | ISC | https://github.com/lucide-icons/lucide |
+| Inter / Fraunces via Fontsource | Locally served fonts | SIL OFL-1.1 | https://github.com/fontsource/font-files |
 | TypeScript | Type checking | Apache-2.0 | https://github.com/microsoft/TypeScript |
-| Vitest | Frontend tests | MIT | https://github.com/vitest-dev/vitest |
-| Vite | Vitest/build tooling dependency | MIT | https://github.com/vitejs/vite |
+| esbuild | Worker bundle preparation | MIT | https://github.com/evanw/esbuild |
+| Vitest / Vite | Unit and behavior tests | MIT | https://github.com/vitest-dev/vitest |
+| Playwright | Browser integration tests | Apache-2.0 | https://github.com/microsoft/playwright |
 
-The npm lockfile also includes common bundled/transitive frontend packages under
-MIT, ISC, BSD-3-Clause, Apache-2.0, and 0BSD licenses, including packages such
-as `@next/env`, `@next/swc-*`, `@swc/helpers`, `postcss`, `source-map-js`,
-`nanoid`, `picocolors`, `fdir`, `picomatch`, `semver`, and `tslib`.
+Build/test dependencies are not application services. Fonts, JavaScript, model,
+WASM, and puzzle assets are served from the same static host as the page.
 
-### Frontend Special License Notes
+The npm lockfile includes transitive packages under MIT, ISC, BSD-3-Clause,
+Apache-2.0, 0BSD, and other licenses. Relevant build dependency notes:
 
-- `caniuse-lite` is present in `frontend/package-lock.json` under CC-BY-4.0.
-  It is browser compatibility data used by frontend tooling.
-- `lightningcss` and platform-specific `lightningcss-*` packages are present
-  under MPL-2.0. These are CSS transform/minification tooling used by the
-  Next.js build chain.
-- `sharp` is present under Apache-2.0, and optional platform packages for
-  `sharp`/`libvips` appear in the lockfile. The `@img/sharp-libvips-*`
-  packages are listed under LGPL-3.0-or-later. These packages are optional
-  native install/build/runtime helpers for Node-based image handling in the
-  Next.js ecosystem; they are not authored application code and are distinct
-  from browser-shipped Puzzle Hint source.
+- `caniuse-lite`: CC-BY-4.0 browser compatibility data.
+- `lightningcss`: MPL-2.0 CSS build tooling.
+- `sharp`: Apache-2.0; optional `libvips` distributions include LGPL-3.0-or-later.
 
-For exact frontend dependency versions and resolved package tarballs, use
-`frontend/package-lock.json`.
+Refer to the packages and lockfile for complete version-specific notices.

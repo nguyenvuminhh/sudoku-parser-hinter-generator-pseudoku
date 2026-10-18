@@ -3,26 +3,25 @@
 import { Moon, Sun } from "lucide-react";
 
 import type { Theme } from "../hooks/useTheme";
-import type { SupabaseAccountState } from "../hooks/useSupabaseAccount";
-import { AccountMenu } from "./AccountMenu";
+import { APP_NAME, APP_TAGLINE } from "../lib/constants";
 
 export function TopBar({
   theme,
-  account,
   onToggleTheme
 }: {
   theme: Theme;
-  account: SupabaseAccountState;
   onToggleTheme: () => void;
 }) {
   return (
-    <header className="top" aria-label="Sudoku tutor header">
+    <header className="top" aria-label={APP_NAME}>
       <div className="brand">
         <span className="brand-mark" aria-hidden="true" />
-        <span className="brand-name">Sudoku strategy desk</span>
+        <span className="brand-copy">
+          <span className="brand-name">{APP_NAME}</span>
+          <span className="brand-tagline">{APP_TAGLINE}</span>
+        </span>
       </div>
       <div className="top-actions">
-        <AccountMenu account={account} />
         <button
           type="button"
           className="theme-pill"

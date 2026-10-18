@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { requestGeneratedPuzzle } from "./api";
+import { requestGeneratedPuzzle } from "./puzzle-services";
 
 describe("static puzzle selection", () => {
   afterEach(() => vi.unstubAllGlobals());

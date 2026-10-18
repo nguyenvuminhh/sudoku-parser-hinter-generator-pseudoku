@@ -1,5 +1,0 @@
--r requirements.txt
-
-# Optional pretrained digit classifier support.
-onnxruntime>=1.20,<2
-huggingface_hub>=0.26,<1

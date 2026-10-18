@@ -91,7 +91,7 @@ export function normalizeDigit(cv: Cv, gray: OpenCV.Mat, cellWidth: number): { i
   });
 }
 
-/** Same OpenCV grid-first extraction and cell geometry as the Python importer. */
+/** Detect and warp the grid before splitting it into 81 centered cell images. */
 export function extractDigits(cv: Cv, frame: ImageData): ExtractedDigit[] {
   return scope(own => {
     const source = own(cv.matFromImageData(frame)), gray = own(new cv.Mat());

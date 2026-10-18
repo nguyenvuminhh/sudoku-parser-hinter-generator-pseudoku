@@ -1,12 +1,6 @@
 name: Deploy Frontend To GitHub Pages
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - frontend/**
-      - data/puzzles/serate-buckets/**
-      - .github/workflows/frontend-pages.yml
   workflow_dispatch:
 
 permissions:
@@ -23,8 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXT_PUBLIC_BASE_PATH: ${{ vars.NEXT_PUBLIC_BASE_PATH }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
     defaults:
       run:
         working-directory: frontend
@@ -36,37 +28,6 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - name: Resolve Supabase public URL
-        if: ${{ env.NEXT_PUBLIC_SUPABASE_URL == '' }}
-        env:
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-        run: |
-          if [ -z "$SUPABASE_PROJECT_ID" ]; then
-            echo "Missing NEXT_PUBLIC_SUPABASE_URL variable or SUPABASE_PROJECT_ID secret." >&2
-            exit 1
-          fi
-          echo "NEXT_PUBLIC_SUPABASE_URL=https://${SUPABASE_PROJECT_ID}.supabase.co" >> "$GITHUB_ENV"
-      - name: Resolve Supabase publishable key
-        if: ${{ env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY == '' }}
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-        run: |
-          if [ -z "$SUPABASE_ACCESS_TOKEN" ] || [ -z "$SUPABASE_PROJECT_ID" ]; then
-            echo "Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY variable or Supabase management secrets." >&2
-            exit 1
-          fi
-          publishable_key="$(
-            curl -fsS "https://api.supabase.com/v1/projects/${SUPABASE_PROJECT_ID}/api-keys" \
-              -H "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" |
-              jq -r 'map(select(.type == "publishable"))[0].api_key // map(select(.name == "anon"))[0].api_key // empty'
-          )"
-          if [ -z "$publishable_key" ]; then
-            echo "Unable to resolve a Supabase publishable or anon key." >&2
-            exit 1
-          fi
-          echo "::add-mask::$publishable_key"
-          echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$publishable_key" >> "$GITHUB_ENV"
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -774,7 +774,7 @@ export function useSudokuGame() {
       return;
     }
 
-    // l2sg (WebAssembly) finds the simplest next logical step. The player's
+    // l2sg and the verified chain solver find the next logical step. The player's
     // pencil marks are passed through so the hint respects work already done and
     // advances past eliminations the player has applied.
     const liveGrid = gridRef.current;
@@ -783,7 +783,7 @@ export function useSudokuGame() {
     try {
       const result = await getHint(gridToPayload(liveGrid), buildCandidateString(liveGrid, notes));
       if (!result) {
-        setMessages(["No logical step found. The remaining cells need guessing, or the puzzle is complete."]);
+        setMessages(["The hint engine could not find a logical step with its supported techniques. Review the candidates or check the board."]);
         return;
       }
 

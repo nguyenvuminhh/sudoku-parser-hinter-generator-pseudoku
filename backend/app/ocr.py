@@ -10,6 +10,7 @@ from backend.app.sudoku.grid import parse_grid, validate_grid
 
 WARPED_GRID_SIZE = 450
 CLASSIFIER_SIZE = 28
+COMPONENT_MERGE_DISTANCE_RATIO = 0.07
 DEFAULT_DIGIT_MODEL_REPO = "onnxmodelzoo/mnist-8"
 DEFAULT_DIGIT_MODEL_FILENAME = "mnist-8.onnx"
 DEFAULT_DIGIT_MODEL_PATH = (
@@ -98,13 +99,13 @@ def extract_sudoku_cells(image_bytes: bytes) -> list[ExtractedCell]:
             left = col * cell_size
             cell = warped[top : top + cell_size, left : left + cell_size]
             digit_area = _crop_cell_center(cell)
-            normalized, ink_ratio = _normalize_digit_image(digit_area)
+            normalized, ink_ratio = _normalize_digit_image(digit_area, cell_width=cell_size)
             extracted.append(
                 ExtractedCell(
                     row=row + 1,
                     col=col + 1,
                     image=normalized,
-                    has_ink=ink_ratio >= 0.018,
+                    has_ink=ink_ratio > 0,
                     ink_ratio=ink_ratio,
                 )
             )
@@ -244,22 +245,38 @@ def _extract_warped_grid(image: object) -> object:
 
 def _crop_cell_center(cell: object) -> object:
     height, width = cell.shape[:2]
-    margin_y = int(height * 0.18)
-    margin_x = int(width * 0.18)
+    margin_y = int(height * 0.08)
+    margin_x = int(width * 0.08)
     return cell[margin_y : height - margin_y, margin_x : width - margin_x]
 
 
-def _normalize_digit_image(image: object) -> tuple[object, float]:
+def _prepare_cell_ink(image: object) -> object:
+    """Threshold grayscale pixels, then map the majority tone to black background."""
     cv2, np = _cv2_np()
-    blurred = cv2.GaussianBlur(image, (3, 3), 0)
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    large_contours = _large_digit_contours(contours, image.shape[:2])
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    # Count thresholded tone groups rather than exact grayscale values, since
+    # antialiasing produces many shades of the same background.
+    if np.count_nonzero(binary) > binary.size / 2:
+        binary = cv2.bitwise_not(binary)
+    return binary
 
-    if not large_contours:
+
+def _normalize_digit_image(image: object, *, cell_width: int | None = None) -> tuple[object, float]:
+    cv2, np = _cv2_np()
+    cell_width = image.shape[1] if cell_width is None else cell_width
+    binary = _prepare_cell_ink(image)
+    # Keep distance and size cutoffs relative to the original, uncropped cell.
+    cluster = _single_ink_cluster(binary, max_distance=cell_width * COMPONENT_MERGE_DISTANCE_RATIO)
+
+    if cluster is None:
         return np.zeros((CLASSIFIER_SIZE, CLASSIFIER_SIZE), dtype=np.uint8), 0.0
 
-    x, y, w, h = cv2.boundingRect(np.vstack(large_contours))
+    x, y, w, h = cv2.boundingRect(cluster)
+    # Measure the cluster's longest dimension so tall, narrow digits still qualify.
+    if max(w, h) < cell_width * 0.5:
+        return np.zeros((CLASSIFIER_SIZE, CLASSIFIER_SIZE), dtype=np.uint8), 0.0
+
     digit = binary[y : y + h, x : x + w]
     ink_ratio = float(np.count_nonzero(digit)) / float(binary.size)
     scale = min(20 / max(w, 1), 20 / max(h, 1))
@@ -271,24 +288,36 @@ def _normalize_digit_image(image: object) -> tuple[object, float]:
     return canvas, ink_ratio
 
 
-def _large_digit_contours(contours: object, image_shape: tuple[int, int]) -> list[object]:
-    cv2, _ = _cv2_np()
-    height, width = image_shape
-    large_contours: list[object] = []
+def _single_ink_cluster(binary: object, *, max_distance: float) -> object | None:
+    """Merge 8-connected ink components by Euclidean distance, transitively.
 
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area < 10:
-            continue
+    Distance maps only decide membership; retain the original strokes for MNIST.
+    Zero or multiple resulting clusters make the cell ineligible for recognition.
+    """
+    cv2, np = _cv2_np()
+    count, labels = cv2.connectedComponents(binary, connectivity=8)
+    if count <= 1:
+        return None
 
-        x, y, w, h = cv2.boundingRect(contour)
-        is_tall_digit = h >= height * 0.42
-        is_substantial = area >= height * width * 0.025
-        not_grid_noise = w <= width * 0.92 and h <= height
-        if is_tall_digit and is_substantial and not_grid_noise:
-            large_contours.append(contour)
+    parents = list(range(count))
 
-    return large_contours
+    def root(label: int) -> int:
+        while parents[label] != label:
+            parents[label] = parents[parents[label]]
+            label = parents[label]
+        return label
+
+    for label in range(1, count):
+        distances = cv2.distanceTransform(
+            (labels != label).astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE
+        )
+        for neighbor in np.unique(labels[distances <= max_distance]):
+            if neighbor:
+                parents[root(int(neighbor))] = root(label)
+
+    if len({root(label) for label in range(1, count)}) != 1:
+        return None
+    return binary
 
 
 def _build_digit_templates() -> dict[int, object]:

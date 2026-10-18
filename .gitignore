@@ -10,6 +10,11 @@ venv/
 # Node / Next.js
 frontend/.next/
 frontend/out/
+frontend/public/ocr/runtime/
+frontend/public/puzzles/
+frontend/public/wasm/advanced-hints.js
+frontend/test-results/
+frontend/playwright-report/
 frontend/node_modules/
 frontend/.env*.local
 frontend/tsconfig.tsbuildinfo

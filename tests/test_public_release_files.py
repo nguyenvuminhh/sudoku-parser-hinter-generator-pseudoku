@@ -134,13 +134,12 @@ class PublicReleaseFilesTests(unittest.TestCase):
 
         self.assertRegex(requirements, r"(?m)^httpx[<>=]")
 
-    def test_frontend_pages_workflow_builds_static_export_with_api_base_url(self):
+    def test_frontend_pages_workflow_builds_static_export(self):
         workflow = (ROOT / ".github" / "workflows" / "frontend-pages.yml").read_text(encoding="utf-8")
 
         self.assertIn("actions/upload-pages-artifact", workflow)
         self.assertIn("actions/deploy-pages", workflow)
         self.assertIn("path: frontend/out", workflow)
-        self.assertIn("NEXT_PUBLIC_API_BASE_URL", workflow)
         self.assertIn("NEXT_PUBLIC_SUPABASE_URL", workflow)
         self.assertIn("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", workflow)
         self.assertIn("SUPABASE_ACCESS_TOKEN", workflow)

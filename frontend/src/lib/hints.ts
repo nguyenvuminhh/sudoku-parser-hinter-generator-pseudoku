@@ -49,7 +49,7 @@ export function buildCandidateString(grid: SudokuGrid, notes: NotesGrid): string
  */
 export function hintResultToResponse(hint: HintResult): HintResponse {
   const technique = { id: techniqueId(hint.technique), name: hint.technique, rank: hint.difficulty };
-  const explanation = [hint.description];
+  const explanation = hint.explanation?.length ? hint.explanation : [hint.description];
 
   if (hint.placement) {
     const cell = indexToCell(hint.placement.cell);
@@ -58,7 +58,7 @@ export function hintResultToResponse(hint: HintResult): HintResponse {
       action: { type: "place", cell, digit: hint.placement.digit, eliminations: [] },
       summary: technique.name,
       explanation,
-      highlights: { primary_cells: [cell], related_cells: [], eliminations: [] }
+      highlights: { primary_cells: [cell], related_cells: hint.causalCells.filter(index => index !== hint.placement!.cell).map(indexToCell), eliminations: [] }
     };
   }
 

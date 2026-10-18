@@ -2,10 +2,15 @@
 // Worker (public/wasm/hint-worker.js) so solving never blocks the main thread;
 // this module owns a single worker for the page lifetime and multiplexes
 // requests over it by id. See ../../wasm/README.md for the build pipeline.
+import type { ChainProof } from "./advanced-hints";
 
 // Mirrors the JSON emitted by wasm/bindings.cpp. Cell values are board indices
 // (0..80, index = row * 9 + col).
 export interface HintResult {
+  /** Ordered logical deductions for advanced chain hints. */
+  explanation?: string[];
+  /** Replayable exact-one implication certificate; no solution lookup. */
+  proof?: ChainProof;
   /** l2sg display name, e.g. "Naked Single", "X-Wings". */
   technique: string;
   /** One-line human readable summary of the step. */
@@ -44,6 +49,8 @@ function hintErrorMessage(code: string): string {
       return "The hint engine could not read the board.";
     case "unsolvable":
       return "This board has no valid solution, so no hint is available.";
+    case "invalid_candidates":
+      return "The current notes contradict Sudoku constraints. Restore missing candidates or check the board before asking for a hint.";
     default:
       return code || "Hint generation failed.";
   }
@@ -109,8 +116,8 @@ class HintEngineClient {
 
   /**
    * Returns the next logical step for `puzzle` (81 chars, 0/. for empty), or
-   * null when there is no logical step (solved, or only guessing would advance
-   * it). `candidates` are optional pencil marks (see hint-worker.js / bindings)
+   * null when no supported logical step is found (including solved boards).
+   * `candidates` are optional pencil marks (see hint-worker.js / bindings)
    * so the hint respects work the player has already done.
    */
   async getHint(puzzle: string, candidates = ""): Promise<HintResult | null> {

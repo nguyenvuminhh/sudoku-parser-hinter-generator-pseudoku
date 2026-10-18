@@ -17,6 +17,18 @@ const baseUrl = self.location.href.replace(/[^/]*$/, "");
 self.importScripts(baseUrl + "l2sg.js");
 
 let modulePromise = null;
+let advancedLoaded = false;
+function getAdvancedHint(puzzle, candidates) {
+  if (!advancedLoaded) {
+    self.importScripts(baseUrl + "advanced-hints.js");
+    advancedLoaded = true;
+  }
+  const hint = self.AdvancedHints.findAdvancedHint(puzzle, candidates);
+  if (hint && !self.AdvancedHints.verifyChainProof(puzzle, candidates, hint)) {
+    throw new Error("The chain solver could not verify its explanation. Please try another hint.");
+  }
+  return hint;
+}
 function getModule() {
   if (!modulePromise) {
     // createL2sgModule is defined by the emscripten glue (EXPORT_NAME).
@@ -42,7 +54,7 @@ self.onmessage = async (event) => {
     const mod = await getModule();
     const json = mod.getHint(puzzle, candidates || "");
     if (!json || json === "null") {
-      self.postMessage({ type: "result", id, hint: null });
+      self.postMessage({ type: "result", id, hint: getAdvancedHint(puzzle, candidates || "") });
       return;
     }
     const parsed = JSON.parse(json);

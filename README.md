@@ -1,6 +1,6 @@
 # Puzzle Hint
 
-Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js frontend.
+Sudoku-first tutor that runs entirely in the browser, served as a static Next.js export. Supabase is optional for accounts and leaderboards. The Python backend remains available for development and standalone API use.
 
 ## What is built
 
@@ -8,7 +8,8 @@ Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js fro
 - Keyboard entry for the board: `1`-`9` fill cells, and `Space`, `Backspace`, `Delete`, or `0` clear cells.
 - Correction-first validation for invalid grids and low-confidence OCR cells.
 - Step-by-step hints with technique name, conclusion, layered explanation, highlights, and history.
-- Level-based puzzle generation backed by a pregenerated SE bucket corpus, with the Ukodus `sudoku-core` engine as the fallback for legacy levels.
+- Advanced hints include verified contradiction and forcing chains; the [fixed Advanced 8+ benchmark](docs/benchmarks/advanced-8-plus.md) checks iterative completion of ten rated puzzles.
+- Local puzzle selection from 78,213 pregenerated, SE-rated puzzles across eight difficulty levels.
 - Row/column/box peer highlighting around the selected cell.
 - Corner notes, center notes, and a 9-color cell paint mode (`Tab` cycles modes, `Z`/`X`/`C`/`V` jump directly).
 - Multi-cell selection with click-drag, `Alt`/`Ctrl`+click, and `Shift`+arrows; entry applies to the whole selection.
@@ -16,43 +17,56 @@ Sudoku-first puzzle hint website with a FastAPI backend and a static Next.js fro
 - Finish dialog with solve statistics: time, hints and checks used, cells filled, and hint techniques encountered.
 - Keypad remaining-digit counts and auto-advancing quick fill digit, both toggleable in Settings.
 - Undo and redo (`Ctrl+Z` / `Ctrl+Y`), and the in-progress game survives page reloads via local storage.
-- FastAPI API routes under `/api/sudoku/*`.
+- Image import, validation, solution checking, and logical hints run on the device; uploaded images never go to an API.
+- Optional FastAPI API routes under `/api/sudoku/*` remain available for standalone tools.
 - Next.js static export that can be served by FastAPI or deployed separately.
 
 ## Run locally
 
-Install Python dependencies:
-
-```bash
-python3 -m pip install -r requirements.txt
-```
-
-Install frontend dependencies:
+Only Node.js and npm are needed for the tutor:
 
 ```bash
 cd frontend
-npm install
+npm ci
+npm run dev
 ```
 
-For production-style serving:
+Open `http://localhost:3000`. From the repo root, `make fe` does the same.
+No FastAPI process or `make model` step is required for the browser app.
+
+For production-style static serving:
 
 ```bash
 cd frontend
 npm run build
-cd ..
-python3 -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001 --reload
+node scripts/serve-static.mjs
 ```
 
-Then open `http://127.0.0.1:8001`.
+Then open `http://127.0.0.1:3100`. Deploy the generated `frontend/out` directory
+to any static host. `npm run dev` and `npm run build` prepare browser assets
+from pinned npm dependencies, the bundled 26 KB MNIST model, and the checked-in
+SE corpus. Generated runtime and puzzle files are ignored by Git.
 
 ## Public deployment
 
-The recommended public deployment is split by responsibility:
+Deploy `frontend/out` to GitHub Pages or another static host. The workflow at
+`.github/workflows/frontend-pages.yml` builds the complete app; no API server
+or `NEXT_PUBLIC_API_BASE_URL` is needed. Set `NEXT_PUBLIC_BASE_PATH=/<repo-name>`
+for project Pages hosting, or leave it blank for root hosting.
 
-- Backend API and OCR on Amazon EC2, preferably behind HTTPS through Caddy, nginx plus Certbot, or an AWS Application Load Balancer.
-- Static frontend on GitHub Pages, built by `.github/workflows/frontend-pages.yml`.
+OCR libraries load only when image import is used, inside a Web Worker. All
+runtime files and the model are served from the same static host. Puzzle
+selection fetches a small static chunk for the chosen level rather than the
+whole collection. Initial asset downloads still need a connection; this is not
+a fully offline/PWA installation.
 
-The frontend uses `NEXT_PUBLIC_API_BASE_URL` at build time to call the EC2 backend. Because GitHub Pages is HTTPS, the backend URL should also be HTTPS.
+### Optional legacy backend
+
+The FastAPI service can still be deployed on Amazon EC2 or run locally for
+standalone API consumers, regression comparisons, and corpus tools. It is
+independent of browser gameplay. Install `requirements.txt` and use `make be`
+for local API development. The legacy Rust generator is needed only for API
+requests when the local corpus is absent.
 
 Backend container:
 
@@ -78,26 +92,14 @@ bundled corpus with a larger server-mounted corpus. If the corpus is missing,
 `easy` through `master` fall back to `sudoku-engine`; `extreme` and advanced
 levels require the corpus.
 
-GitHub Pages repository variables:
+GitHub Pages repository variable:
 
 ```text
-NEXT_PUBLIC_API_BASE_URL=https://api.example.com
 NEXT_PUBLIC_BASE_PATH=/<repo-name>
 ```
 
-Leave `NEXT_PUBLIC_BASE_PATH` blank for a user or organization Pages site at `https://<github-user>.github.io/`.
-
-For frontend-only development against a running FastAPI server:
-
-```bash
-make be
-```
-
-```bash
-make fe
-```
-
-Run those in two separate terminals. `make be` starts FastAPI on `127.0.0.1:8001` with hot reload and CORS configured in `backend/app/main.py`. `make fe` starts Next.js on `127.0.0.1:3000` and points it at the backend.
+Leave `NEXT_PUBLIC_BASE_PATH` blank for a user or organization Pages site at
+`https://<github-user>.github.io/`.
 
 ## Supabase Auth and Leaderboards
 
@@ -122,7 +124,7 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<publishable-or-anon-key>
 ```
 
 For GitHub Pages deploys, set those as GitHub Actions repository variables
-alongside `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_BASE_PATH`; the static
+alongside `NEXT_PUBLIC_BASE_PATH`; the static
 frontend must receive them during `npm run build`.
 
 The browser uses the public key only. Do not put a Supabase service-role key in
@@ -186,17 +188,33 @@ image upload
 -> editable correction grid
 ```
 
-By default the backend uses a lightweight OpenCV template digit classifier so it works without a trained model. For better accuracy, install the optional pretrained model:
+The browser uses OpenCV.js for grid extraction, then thresholds each grayscale
+cell with Otsu's method and maps the majority tone to black background. It
+merges ink components within 7% of the original cell width and accepts only
+one cluster whose longest dimension is at least 50% of the cell width. It
+normalizes the original strokes to 28×28 and runs the bundled MNIST model via
+ONNX Runtime Web (single-threaded WebAssembly, inside the worker).
+
+The model predicts labels `0..9`; `0` is treated as empty. Image import remains
+an editable assistant: review classified digits before solving. The browser
+never uploads the image or calls an external recognition service.
+
+The optional Python importer can use the same model after `make model` downloads
+it into `data/models/onnx-mnist/mnist-8.onnx`; `SUDOKU_DIGIT_MODEL` overrides
+that backend path. The browser model is bundled in `frontend/assets`.
+
+Browser integration checks against the static export:
 
 ```bash
-make model
+cd frontend
+npx playwright install chromium webkit
+npm run test:browser
 ```
 
-That downloads `onnxmodelzoo/mnist-8` from Hugging Face into `data/models/onnx-mnist/mnist-8.onnx`. Hugging Face lists this model as `Apache-2.0`. When that file exists, the backend uses it automatically. You can override the ONNX model path with `SUDOKU_DIGIT_MODEL=/path/to/model.onnx`.
-
-The bundled MNIST model predicts labels `0..9`; blank handling is done before model inference by OpenCV. A predicted `0` is treated as empty because Sudoku cells only contain `1..9`.
-
-The importer intentionally reads only large given/entered digits. Small candidate notes inside a Sudoku cell are ignored.
+Tests cover all eight levels, WASM hints, image upload, invalid uploads, and
+client-side OCR. If the ten local crops exist under `data/img/cropped`, the
+suite also checks their 810 cells against the manually transcribed grids in
+`tests/fixtures/ocr-screenshots.json`; those private/local images are not in Git.
 
 ## Master and Extreme Corpus Generation
 

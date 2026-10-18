@@ -19,7 +19,7 @@ std::string getHint(const std::string& puzzle, const std::string& candidates);
   digits (`""` for filled cells), e.g. `"|159|3|..."`. Pass `""` to derive full
   candidates from the values.
 - returns a JSON string describing the **next logical step**, the literal
-  `null` when there is no logical step (solved, or only guessing would help), or
+  `null` when none of its supported techniques finds a step (including solved boards), or
   `{"error":"invalid_format"|"unsolvable"}`.
 
 JSON shape (consumed by `frontend/src/lib/hints.ts`):
@@ -76,3 +76,27 @@ Output: `../frontend/public/wasm/l2sg.js` (~28 KB) and `l2sg.wasm` (~245 KB,
 `importScripts('l2sg.js')`, instantiates the module, and answers `getHint`
 requests off the main thread. `frontend/src/lib/hintEngine.ts` owns the worker
 (singleton + promise-based request map) and `useHintEngine()` wraps it for React.
+
+## Verified chain solver
+
+When l2sg and its pattern fallbacks find no hint, the worker lazy-loads the
+TypeScript chain solver in `frontend/src/lib/advanced-hints.ts`. It preserves
+the current candidate masks and models cells and unit/digit combinations as
+exactly-one constraints. It tries contradiction chains, then common consequences
+across every candidate of a cell or every possible position of a digit in a unit.
+Propagation uses only peer exclusion and last-candidate deductions; it does not
+recurse into a solution search or reveal a stored solution digit.
+
+Each advanced hint contains a replayable certificate. A separate verifier checks
+every assumption, implication, contradiction, and conclusion before the worker
+returns the hint. The hint panel displays the deductions in order. If every case
+contradicts a candidate group, the solver reports inconsistent notes. Exhausting
+the supported techniques is reported as an engine limitation, not a claim that
+guessing is necessary.
+
+`npm run dev` and `npm run build` compile this solver into the generated
+`frontend/public/wasm/advanced-hints.js`; the existing C++ WASM artifacts do not
+need rebuilding. The added solver remains in the same worker, entirely client-side.
+
+The frozen [Advanced 8+ benchmark](../docs/benchmarks/advanced-8-plus.md) compares
+the original and upgraded pipelines by applying hints iteratively to completion.

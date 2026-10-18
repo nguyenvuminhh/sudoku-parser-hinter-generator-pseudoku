@@ -35,5 +35,5 @@ jobs:
       - run: npm test -- --run
       - run: npm run typecheck
       - run: npm run build
-        env:
-          NEXT_PUBLIC_API_BASE_URL: http://127.0.0.1:8001
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --project=chromium

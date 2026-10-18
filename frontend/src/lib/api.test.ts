@@ -1,34 +1,32 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { requestGeneratedPuzzle } from "./api";
 
-describe("api", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("requests a generated puzzle for the given level", async () => {
-    const payload = {
-      puzzle: "0".repeat(81),
-      solution: "1".repeat(81),
-      level: { id: "easy", name: "Easy", description: "", techniques: [] },
-      requested_level: { id: "easy", name: "Easy", description: "", techniques: [] },
-      se_rating: 1.2,
-      techniques: [],
-      technique_profile: {},
-      attribution: { name: "l2sg", url: "", license: "MIT", copyright: "" }
-    };
-    const fetchMock = vi.fn(
-      async (_input: RequestInfo | URL, _init?: RequestInit) =>
-        new Response(JSON.stringify(payload), { headers: { "Content-Type": "application/json" }, status: 200 })
-    );
+describe("static puzzle selection", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("selects from the requested rated bucket without calling an API", async () => {
+    const record = ["0".repeat(81), "1".repeat(81), 8.4, "Region Forcing Chains"];
+    const fetchMock = vi.fn(async (url: string) => new Response(JSON.stringify(
+      url.endsWith("manifest.json")
+        ? { levels: { advanced_8_plus: { count: 1, chunkSize: 256, name: "Advanced 8+" } } }
+        : [record]
+    )));
     vi.stubGlobal("fetch", fetchMock);
-
-    const result = await requestGeneratedPuzzle("easy");
-
-    const requestInit = fetchMock.mock.calls[0][1];
-    const requestBody = JSON.parse(requestInit?.body as string);
-    expect(requestBody.level).toBe("easy");
-    expect(result.puzzle).toBe("0".repeat(81));
+    const result = await requestGeneratedPuzzle("advanced_8_plus");
+    expect(result.level.id).toBe("advanced_8_plus");
+    expect(result.se_rating).toBe(8.4);
+    expect(result.techniques).toEqual(["Region Forcing Chains"]);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/puzzles/manifest.json", "/puzzles/advanced_8_plus/0.json"
+    ]);
+  });
+  it("reports unavailable static files", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("missing", { status: 404 })));
+    await expect(requestGeneratedPuzzle("easy")).rejects.toThrow(/puzzle collection/i);
+  });
+  it("rejects unknown levels before requesting files", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(requestGeneratedPuzzle("../private")).rejects.toThrow(/difficulty/i);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

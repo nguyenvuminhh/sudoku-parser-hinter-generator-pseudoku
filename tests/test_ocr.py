@@ -4,6 +4,8 @@ from unittest.mock import patch
 from backend.app.ocr import (
     OnnxDigitClassifier,
     TemplateDigitClassifier,
+    _prepare_cell_ink,
+    _normalize_digit_image,
     default_digit_model_path,
     extract_sudoku_cells,
     load_digit_classifier,
@@ -66,14 +68,128 @@ class OcrTests(unittest.TestCase):
         self.assertFalse(cell.has_ink)
         self.assertIsNone(prediction.value)
 
-    def test_large_digit_is_used_when_cell_also_has_notes(self):
-        image_bytes = make_synthetic_sudoku_image({(1, 1): 6}, notes={(1, 1): [1, 2, 7, 9]})
-        cell = extract_sudoku_cells(image_bytes)[0]
+    def test_large_digit_with_separate_notes_is_skipped(self):
+        import numpy as np
 
-        prediction = TemplateDigitClassifier().predict(cell.image)
+        image = np.full((100, 100), 255, dtype=np.uint8)
+        image[25:80, 30:80] = 0
+        image[5:10, 5:10] = 0
+        normalized, ink_ratio = _normalize_digit_image(image)
+        self.assertEqual(ink_ratio, 0)
+        self.assertIsNone(TemplateDigitClassifier().predict(normalized).value)
 
-        self.assertTrue(cell.has_ink)
-        self.assertEqual(prediction.value, 6)
+    def test_narrow_full_height_digit_is_accepted_by_size_rule(self):
+        image_bytes = make_synthetic_sudoku_image({(1, 1): 1})
+        self.assertTrue(extract_sudoku_cells(image_bytes)[0].has_ink)
+
+    def test_cell_preprocessing_thresholds_without_resizing_and_normalizes_both_polarities(self):
+        import cv2
+        import numpy as np
+
+        masks = []
+        for background, foreground in ((245, 30), (30, 245), (100, 150)):
+            image = np.full((50, 50), background, dtype=np.uint8)
+            cv2.putText(image, "1", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, foreground, 2)
+            binary = _prepare_cell_ink(image)
+            self.assertEqual(binary.shape, image.shape)
+            self.assertEqual(set(np.unique(binary)), {0, 255})
+            self.assertEqual(int(binary[0, 0]), 0)
+            masks.append(binary)
+        for mask in masks[1:]:
+            np.testing.assert_array_equal(mask, masks[0])
+
+    def test_uniform_backgrounds_stay_blank(self):
+        import numpy as np
+
+        for color in (0, 40, 128, 220, 255):
+            with self.subTest(color=color):
+                normalized, ink_ratio = _normalize_digit_image(np.full((50, 50), color, np.uint8))
+                self.assertEqual(ink_ratio, 0)
+                self.assertFalse(np.any(normalized))
+
+    def test_color_cell_and_its_grayscale_version_have_same_ink(self):
+        import cv2
+        import numpy as np
+
+        image = np.full((50, 50, 3), (170, 80, 35), dtype=np.uint8)
+        cv2.putText(image, "8", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 2)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        np.testing.assert_array_equal(_prepare_cell_ink(image), _prepare_cell_ink(gray))
+
+    def test_light_digit_on_dark_cell_matches_dark_digit_on_light_cell(self):
+        import cv2
+        import numpy as np
+
+        image = np.full((50, 50), 240, dtype=np.uint8)
+        cv2.putText(image, "6", (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, 20, 2)
+        normal, normal_ratio = _normalize_digit_image(image)
+        inverted, inverted_ratio = _normalize_digit_image(255 - image)
+        self.assertGreater(normal_ratio, 0)
+        self.assertEqual(normal_ratio, inverted_ratio)
+        np.testing.assert_array_equal(normal, inverted)
+
+    def test_cluster_filter_rejects_empty_small_and_multiple_clusters(self):
+        import numpy as np
+
+        for rectangles in ([], [(30, 20, 79, 69)], [(5, 20, 30, 80), (60, 20, 90, 80)]):
+            with self.subTest(rectangles=rectangles):
+                image = np.full((100, 100), 255, dtype=np.uint8)
+                for x1, y1, x2, y2 in rectangles:
+                    image[y1:y2, x1:x2] = 0
+                normalized, ink_ratio = _normalize_digit_image(image)
+                self.assertEqual(ink_ratio, 0)
+                self.assertFalse(np.any(normalized))
+
+    def test_cluster_size_cutoff_includes_exactly_half_cell_width(self):
+        import numpy as np
+
+        for width, height in ((10, 50), (50, 10)):
+            with self.subTest(width=width, height=height):
+                image = np.full((100, 100), 255, dtype=np.uint8)
+                image[20:20 + height, 25:25 + width] = 0
+                normalized, ink_ratio = _normalize_digit_image(image)
+                self.assertGreater(ink_ratio, 0)
+                self.assertEqual(normalized.shape, (28, 28))
+
+    def test_cluster_distance_uses_original_cell_width_and_preserves_gaps(self):
+        import numpy as np
+
+        for distance, accepted in ((7, True), (8, False)):
+            with self.subTest(distance=distance):
+                image = np.full((80, 80), 255, dtype=np.uint8)
+                image[20:60, 5:30] = 0
+                image[20:60, 29 + distance:65] = 0
+                normalized, ink_ratio = _normalize_digit_image(image, cell_width=100)
+                self.assertEqual(ink_ratio > 0, accepted)
+                if accepted:
+                    self.assertEqual(int(normalized[14, 13]), 0)
+
+    def test_cluster_merging_is_transitive(self):
+        import numpy as np
+
+        image = np.full((100, 100), 255, dtype=np.uint8)
+        image[20:80, 10:25] = 0
+        image[20:80, 31:46] = 0
+        image[20:80, 52:67] = 0
+        _, ink_ratio = _normalize_digit_image(image)
+        self.assertGreater(ink_ratio, 0)
+
+    def test_cluster_distance_is_euclidean(self):
+        import numpy as np
+
+        image = np.full((100, 100), 255, dtype=np.uint8)
+        image[5:40, 5:40] = 0
+        image[44:85, 44:85] = 0
+        # Nearest pixels differ by (5, 5): farther than the 7px radius.
+        _, ink_ratio = _normalize_digit_image(image)
+        self.assertEqual(ink_ratio, 0)
+
+    def test_rejected_cells_do_not_reach_classifier(self):
+        image_bytes = make_synthetic_sudoku_image({}, notes={(1, 1): [1, 2, 6, 9]})
+        with patch("backend.app.ocr.load_digit_classifier") as load:
+            result = recognize_sudoku_image(image_bytes, "notes.png")
+        load.return_value.predict.assert_not_called()
+        self.assertTrue(all(cell.value is None for cell in result.cells))
 
     def test_load_digit_classifier_prefers_downloaded_default_model(self):
         with (
@@ -179,7 +295,7 @@ def make_synthetic_sudoku_image(
     for (row, col), digit in digits.items():
         text = str(digit)
         font = cv2.FONT_HERSHEY_SIMPLEX
-        scale = 1.35
+        scale = 1.5
         thickness = 3
         text_size, _ = cv2.getTextSize(text, font, scale, thickness)
         x = (col - 1) * cell + (cell - text_size[0]) // 2

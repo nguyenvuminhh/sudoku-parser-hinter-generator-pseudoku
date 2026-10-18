@@ -31,6 +31,18 @@ The product direction keeps OpenCV grid extraction as the image import path.
 
 ## Optional Model Runtime
 
+The static frontend ships a copy of `mnist-8.onnx` from
+`https://huggingface.co/onnxmodelzoo/mnist-8` (Apache-2.0), stored in
+`frontend/assets/mnist-8.onnx`. It runs locally using `onnxruntime-web` (MIT)
+and OpenCV.js via `@techstark/opencv-js` (Apache-2.0). The build copies the
+model notice, OpenCV license, and ONNX Runtime license/third-party notices
+alongside the browser runtime in `frontend/public/ocr/runtime/`. Those runtime
+files are built from pinned npm dependencies and served from the app's own
+static host; image data is not sent to an external recognition service.
+
+Browser asset preparation uses esbuild (MIT). Browser integration tests use
+Playwright (Apache-2.0); neither is loaded by the running app.
+
 `requirements-model.txt` enables the optional ONNX digit classifier support:
 
 | Project | Purpose | SPDX license | Source |

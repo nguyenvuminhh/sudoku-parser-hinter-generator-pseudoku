@@ -83,6 +83,14 @@ describe("checkResultMessage", () => {
 });
 
 describe("hintResultToResponse", () => {
+  it("preserves each step of an advanced chain explanation", () => {
+    const result: HintResult = {
+      technique: "Contradiction Chain", description: "Remove 3 from R3C8.", difficulty: 21,
+      explanation: ["Assume R3C8 = 3.", "This forces R8C6 = 3.", "Row 7 has no place for 3."],
+      causalCells: [25, 68], eliminationCells: [25], eliminations: [{ cell: 25, digit: 3 }], placement: null
+    };
+    expect(hintResultToResponse(result).explanation).toEqual(result.explanation);
+  });
   it("maps a placement to a place action highlighting the target cell", () => {
     const result: HintResult = {
       technique: "Hidden Single",

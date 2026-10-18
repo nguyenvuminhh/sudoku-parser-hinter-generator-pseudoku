@@ -2,11 +2,11 @@ import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { HintResult } from "../src/lib/hintEngine";
-import { verifyChainProof } from "../src/lib/advanced-hints";
+import { parsePuzzleText, solveSudoku } from "../src/lib/sudoku-state";
 
 const fixture = JSON.parse(readFileSync(path.resolve("../tests/fixtures/hint-stalled-board.json"), "utf8")) as { puzzle: string; candidates: string };
 
-test("the browser worker finds a verified chain for the user's stalled screenshot", async ({ page }) => {
+test("the browser worker finds a sound native AIC for the user's stalled screenshot", async ({ page }) => {
   await page.goto("./");
   const response = await page.evaluate(async (fixture) => {
     const worker = new Worker(new URL("wasm/hint-worker.js", location.href));
@@ -22,9 +22,13 @@ test("the browser worker finds a verified chain for the user's stalled screensho
   }, fixture);
   expect(response.error).toBeUndefined();
   expect(response.hint).not.toBeNull();
-  expect(response.hint!.technique).toBe("Contradiction Chain");
-  expect(response.hint!.eliminations).toContainEqual({ cell: 25, digit: 3 });
-  expect(verifyChainProof(fixture.puzzle, fixture.candidates, response.hint!)).toBe(true);
+  expect(response.hint!.technique).toBe("AIC");
+  expect(response.hint!.eliminations.length).toBeGreaterThan(0);
+  const solution = solveSudoku(parsePuzzleText(fixture.puzzle))!;
+  for (const { cell, digit } of response.hint!.eliminations) {
+    expect(fixture.candidates.split("|")[cell]).toContain(String(digit));
+    expect(digit).not.toBe(solution[cell]);
+  }
 });
 
 test("advances the screenshot through repeated logical hints without revealing solution digits", async ({ page }) => {

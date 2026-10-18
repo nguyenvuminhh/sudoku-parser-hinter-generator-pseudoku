@@ -1,14 +1,29 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/fraunces";
 import { APP_NAME, APP_DESCRIPTION } from "../lib/constants";
+import { assetUrl } from "../lib/static-assets";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: APP_NAME,
   applicationName: APP_NAME,
-  description: APP_DESCRIPTION
+  description: APP_DESCRIPTION,
+  manifest: assetUrl("manifest.webmanifest"),
+  appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
+  other: { "apple-mobile-web-app-capable": "yes" },
+  icons: {
+    icon: assetUrl("icons/icon.svg"),
+    apple: { url: assetUrl("icons/apple-touch-icon.png"), sizes: "180x180", type: "image/png" }
+  }
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0f141a"
 };
 
 const themeInitScript = `(function(){try{var t=localStorage.getItem("sudoku-theme");if(t!=="light"&&t!=="dark"){t=window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}document.documentElement.dataset.theme=t;}catch(e){}})();`;

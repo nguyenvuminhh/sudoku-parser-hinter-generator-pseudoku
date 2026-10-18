@@ -4,6 +4,7 @@ import { Moon, Sun } from "lucide-react";
 
 import type { Theme } from "../hooks/useTheme";
 import { APP_NAME, APP_TAGLINE } from "../lib/constants";
+import { FullscreenControl } from "./FullscreenControl";
 
 export function TopBar({
   theme,
@@ -22,6 +23,7 @@ export function TopBar({
         </span>
       </div>
       <div className="top-actions">
+        <FullscreenControl />
         <button
           type="button"
           className="theme-pill"

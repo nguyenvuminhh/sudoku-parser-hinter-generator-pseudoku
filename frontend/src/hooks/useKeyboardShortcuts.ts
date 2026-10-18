@@ -21,7 +21,7 @@ export function useKeyboardShortcuts(game: SudokuGame) {
   useEffect(() => {
     function handleWindowKeyDown(event: globalThis.KeyboardEvent) {
       const current = gameRef.current;
-      if (isEditableTarget(event.target)) {
+      if (isEditableTarget(event.target) || document.querySelector("dialog[open]")) {
         return;
       }
 

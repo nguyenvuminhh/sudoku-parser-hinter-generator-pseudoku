@@ -120,6 +120,7 @@ export function SolvingControls({
             type="button"
             className={entryMode === entry.mode ? "eb-btn mode on" : "eb-btn mode"}
             aria-pressed={entryMode === entry.mode}
+            aria-label={entry.label}
             onClick={() => onEntryModeChange(entry.mode)}
           >
             {entry.icon}

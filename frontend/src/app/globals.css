@@ -376,6 +376,7 @@ h3 {
 
 .board-stack {
   align-items: center;
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1851,8 +1852,18 @@ kbd {
     overflow: hidden;
   }
 
+  .stage {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
   .board-col {
-    align-self: start;
+    align-self: stretch;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .board-stack {
+    max-width: var(--board-size, 560px);
   }
 
   .panel-col {
@@ -1970,4 +1981,14 @@ kbd {
   .eb-div {
     margin: 4px 1px;
   }
+}
+
+/* A short desktop viewport can make the board narrower than a phone. */
+@container (max-width: 300px) {
+  .board-status { flex-wrap: wrap; gap: 6px; }
+  .eb-btn { min-width: 0; padding: 6px 4px; }
+  .eb-btn span { display: none; }
+  .eb-div { margin: 4px 1px; }
+  .keypad { gap: 3px; }
+  .keypad button svg { width: 14px; }
 }

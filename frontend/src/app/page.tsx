@@ -10,6 +10,7 @@ import { SolvingPanel } from "../components/SolvingPanel";
 import { SudokuBoard } from "../components/SudokuBoard";
 import { TopBar } from "../components/TopBar";
 import { useClickOutsideBoard } from "../hooks/useClickOutsideBoard";
+import { useBoardLayout } from "../hooks/useBoardLayout";
 import { useImageImport } from "../hooks/useImageImport";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useSudokuGame } from "../hooks/useSudokuGame";
@@ -18,6 +19,7 @@ import { formatElapsedSeconds } from "../lib/time";
 
 export default function PseudokuPage() {
   const game = useSudokuGame();
+  const boardLayout = useBoardLayout(game.isSolving);
   const { theme, toggleTheme } = useTheme();
   const imageImport = useImageImport(game);
   useKeyboardShortcuts(game);
@@ -31,8 +33,8 @@ export default function PseudokuPage() {
       <TopBar theme={theme} onToggleTheme={toggleTheme} />
 
       <div className="stage">
-        <section className="board-col" aria-label="Sudoku board">
-          <div className="board-stack">
+        <section className="board-col" aria-label="Sudoku board" ref={boardLayout.columnRef}>
+          <div className="board-stack" ref={boardLayout.stackRef}>
             {game.isSolving ? (
               <div className="board-status">
                 <span

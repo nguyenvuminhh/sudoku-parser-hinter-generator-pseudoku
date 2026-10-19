@@ -2,6 +2,11 @@ import { test, expect, type Page } from "@playwright/test";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
+const decorativePuzzle = [
+  "..53.....", "8......2.", ".7..1.5..", "4....53..", ".1..7...6",
+  "..32...8.", ".6.5....9", "..4....3.", ".....97..",
+].join("");
+
 async function recognize(page: Page, bytes: Buffer, alreadyCropped = false) {
   return page.evaluate(async ({ base64, alreadyCropped }) => {
     const file = new File([Uint8Array.from(atob(base64), value => value.charCodeAt(0))], "puzzle.png", { type: "image/png" });
@@ -129,6 +134,31 @@ test("highlighted screenshot ignores border fragments and pencil notes", async (
     "...3...7.", "...6...95", "1..7.....", "9..8..3..",
   ].join(""));
 });
+
+test("extracts all 23 smaller decorative digits without classifying empty cells", async ({ page }) => {
+  const result = await recognize(page, readFileSync(path.resolve("../tests/fixtures/ocr-decorative-digits.png")), true);
+  expect(result.error).toBeUndefined();
+  // Digit eligibility is independent of model accuracy for this unusual font.
+  expect(result.cells!.map(cell => cell.value === null ? "." : "#").join("")).toBe(decorativePuzzle.replace(/[1-9]/g, "#"));
+});
+
+for (const choice of ["Use crop", "No crop — already cropped"]) {
+  test(`decorative grid remains correctable after ${choice}`, async ({ page }) => {
+    await page.getByRole("tab", { name: "Import", exact: true }).click();
+    await page.locator('input[type="file"]').setInputFiles(path.resolve("../tests/fixtures/ocr-decorative-digits.png"));
+    await expect(page.getByText(/Board found/)).toBeVisible();
+    await page.getByRole("button", { name: choice, exact: true }).click();
+    await expect(page.getByText(/23 clues detected/)).toBeVisible();
+    // The bundled model confuses the curled 2 with 8, and sometimes 9 with 6.
+    // Keep these as user corrections rather than baking font-specific guesses into OCR.
+    for (const [index, value] of [[48, "2"], [62, "9"]] as const) {
+      await page.getByRole("gridcell").nth(index).click();
+      await page.keyboard.press(value);
+    }
+    expect((await page.getByRole("gridcell").allTextContents()).map(text => text.trim() || ".").join("")).toBe(decorativePuzzle);
+    await expect(page.getByRole("button", { name: /Start solving/ })).toBeEnabled();
+  });
+}
 
 test("screenshot with clipped outer borders asks for the complete grid", async ({ page }) => {
   const result = await recognize(page, readFileSync(path.resolve("../tests/fixtures/ocr-clipped-border.png")));

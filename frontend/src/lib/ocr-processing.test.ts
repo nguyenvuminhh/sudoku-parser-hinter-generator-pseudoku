@@ -17,6 +17,10 @@ describe("OCR cell eligibility", () => {
   it("accepts tall narrow digits by their longest dimension", () => {
     expect(singleInkCluster(ink([[20, 20, 5, 50]]), 100, 100, 100)).toEqual({ x: 20, y: 20, width: 5, height: 50 });
   });
+  it("accepts smaller full-size fonts starting at 40% of the original cell width", () => {
+    expect(singleInkCluster(ink([[30, 25, 30, 40]]), 100, 100, 100)).toEqual({ x: 30, y: 25, width: 30, height: 40 });
+    expect(singleInkCluster(ink([[30, 25, 30, 39]]), 100, 100, 100)).toBeNull();
+  });
   it("requires both cluster sides to be strictly below 90% of the sampled cell width", () => {
     expect(singleInkCluster(ink([[5, 5, 5, 89]]), 100, 100, 100)).not.toBeNull();
     expect(singleInkCluster(ink([[5, 5, 5, 90]]), 100, 100, 100)).toBeNull();

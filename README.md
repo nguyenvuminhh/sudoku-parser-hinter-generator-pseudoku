@@ -145,7 +145,7 @@ leaving the digit as white ink.
 
 Ink components within **7% of the original cell width** are grouped without
 thickening their strokes. A cell is accepted only when its ink forms one cluster
-and its longest dimension reaches **50% of the original cell width**. Both sides
+and its longest dimension reaches **40% of the original cell width**. Both sides
 must also remain strictly below **90% of the inset crop width**, rejecting border
 fragments that could otherwise be classified as a one. This skips
 small pencil notes, including those in row 2, column 2 of this example.

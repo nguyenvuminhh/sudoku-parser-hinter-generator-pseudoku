@@ -2,6 +2,7 @@ import type * as OpenCV from "@techstark/opencv-js";
 
 export type Cv = typeof OpenCV;
 export const COMPONENT_MERGE_DISTANCE_RATIO = 0.07;
+export const MIN_CLUSTER_SIDE_RATIO = 0.4;
 export const MAX_CLUSTER_SIDE_RATIO = 0.9;
 export type Bounds = { x: number; y: number; width: number; height: number };
 export type ExtractedDigit = { row: number; col: number; image: Uint8Array | null; hasLoop: boolean };
@@ -45,7 +46,9 @@ export function singleInkCluster(binary: Uint8Array, width: number, height: numb
   // Use the sampled crop width: border remnants can span the entire inset
   // crop while remaining shorter than 90% of the original grid cell.
   const maxSide = width * MAX_CLUSTER_SIDE_RATIO;
-  if (maxX < 0 || Math.max(clusterWidth, clusterHeight) < cellWidth * 0.5
+  // Some full-size fonts occupy only 44% of a cell; pencil notes remain
+  // smaller than this cutoff and still must form one connected ink cluster.
+  if (maxX < 0 || Math.max(clusterWidth, clusterHeight) < cellWidth * MIN_CLUSTER_SIDE_RATIO
     || clusterWidth >= maxSide || clusterHeight >= maxSide) return null;
   const first = root(minY * width + binary.subarray(minY * width, (minY + 1) * width).findIndex(value => value !== 0));
   for (let index = 0; index < binary.length; index++) {

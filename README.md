@@ -6,6 +6,20 @@ explained next step when you get stuck.
 
 **[Play Pseudoku →](https://pseudoku.duckdns.org)**
 
+## Motivation
+
+My friend and I love Sudoku. But the app we used had ads, and when we got stuck,
+a hint cost in-game currency or meant watching another ad. Typing a whole puzzle
+into a hint website by hand added another frustration.
+
+So we built Pseudoku: import a photo or screenshot, review the recognized grid,
+and ask for an explained next step. No ads, no hint currency, and no need to
+retype the whole board. Image parsing and hints run locally in your browser.
+You can also choose a fresh puzzle from eight difficulty levels and solve it
+in the same workspace.
+
+Live app: [pseudoku.duckdns.org](https://pseudoku.duckdns.org).
+
 ## General description
 
 Pseudoku brings puzzle entry, image recognition, and guided solving into one

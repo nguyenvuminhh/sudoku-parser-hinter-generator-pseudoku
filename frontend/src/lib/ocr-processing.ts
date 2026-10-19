@@ -2,6 +2,7 @@ import type * as OpenCV from "@techstark/opencv-js";
 
 export type Cv = typeof OpenCV;
 export const COMPONENT_MERGE_DISTANCE_RATIO = 0.07;
+export const MAX_CLUSTER_SIDE_RATIO = 0.9;
 export type Bounds = { x: number; y: number; width: number; height: number };
 export type ExtractedDigit = { row: number; col: number; image: Uint8Array | null; hasLoop: boolean };
 
@@ -40,12 +41,17 @@ export function singleInkCluster(binary: Uint8Array, width: number, height: numb
       }
     }
   }
-  if (maxX < 0 || Math.max(maxX - minX + 1, maxY - minY + 1) < cellWidth * 0.5) return null;
+  const clusterWidth = maxX - minX + 1, clusterHeight = maxY - minY + 1;
+  // Use the sampled crop width: border remnants can span the entire inset
+  // crop while remaining shorter than 90% of the original grid cell.
+  const maxSide = width * MAX_CLUSTER_SIDE_RATIO;
+  if (maxX < 0 || Math.max(clusterWidth, clusterHeight) < cellWidth * 0.5
+    || clusterWidth >= maxSide || clusterHeight >= maxSide) return null;
   const first = root(minY * width + binary.subarray(minY * width, (minY + 1) * width).findIndex(value => value !== 0));
   for (let index = 0; index < binary.length; index++) {
     if (parents[index] !== -1 && root(index) !== first) return null;
   }
-  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+  return { x: minX, y: minY, width: clusterWidth, height: clusterHeight };
 }
 
 /** Every OpenCV allocation belongs to a scope, including failure paths. */
@@ -91,32 +97,94 @@ export function normalizeDigit(cv: Cv, gray: OpenCV.Mat, cellWidth: number): { i
   });
 }
 
-/** Detect and warp the grid before splitting it into 81 centered cell images. */
-export function extractDigits(cv: Cv, frame: ImageData): ExtractedDigit[] {
+type Point = [number, number];
+
+/** Shared contour detection; crop proposals additionally verify the inner grid. */
+function findGridOutline(cv: Cv, gray: OpenCV.Mat, verifyGrid = false): Point[] | null {
   return scope(own => {
-    const source = own(cv.matFromImageData(frame)), gray = own(new cv.Mat());
-    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
     const blurred = own(new cv.Mat()), threshold = own(new cv.Mat());
     cv.GaussianBlur(gray, blurred, new cv.Size(7, 7), 0);
     cv.adaptiveThreshold(blurred, threshold, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 2);
     const contours = own(new cv.MatVector()), hierarchy = own(new cv.Mat());
-    cv.findContours(threshold, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+    cv.findContours(threshold, contours, hierarchy, verifyGrid ? cv.RETR_LIST : cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     const ranked = Array.from({ length: contours.size() }, (_, index) => {
       const contour = own(contours.get(index));
       return { contour, area: cv.contourArea(contour) };
     }).sort((a, b) => b.area - a.area);
-    let outline: Array<[number, number]> | null = null;
-    for (const { contour, area } of ranked.slice(0, 12)) {
+    for (const { contour, area } of ranked.slice(0, verifyGrid ? 24 : 12)) {
       const approx = own(new cv.Mat());
       cv.approxPolyDP(contour, approx, 0.02 * cv.arcLength(contour, true), true);
-      if (approx.rows !== 4 || area <= gray.rows * gray.cols * 0.15) continue;
-      outline = Array.from({ length: 4 }, (_, index) => [approx.data32S[index * 2], approx.data32S[index * 2 + 1]]);
-      break;
+      if (approx.rows !== 4 || area <= gray.rows * gray.cols * (verifyGrid ? 0.01 : 0.15) || !cv.isContourConvex(approx)) continue;
+      const outline: Point[] = Array.from({ length: 4 }, (_, index) => [approx.data32S[index * 2], approx.data32S[index * 2 + 1]]);
+      if (verifyGrid && !hasSudokuLines(cv, threshold, outline)) continue;
+      return outline;
     }
+    return null;
+  });
+}
+
+function orderedPoints(outline: Point[]): Point[] {
+  const sorted = (score: (point: Point) => number) => [...outline].sort((a, b) => score(a) - score(b));
+  const sums = sorted(([x, y]) => x + y), diffs = sorted(([x, y]) => y - x);
+  return [sums[0], diffs[0], sums[3], diffs[3]];
+}
+
+/** A rectangular panel alone is insufficient: require six inner lines on each axis. */
+function hasSudokuLines(cv: Cv, binary: OpenCV.Mat, outline: Point[]): boolean {
+  return scope(own => {
+    const points = own(cv.matFromArray(4, 1, cv.CV_32FC2, orderedPoints(outline).flat()));
+    const target = own(cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, 449, 0, 449, 449, 0, 449]));
+    const transform = own(cv.getPerspectiveTransform(points, target)), grid = own(new cv.Mat());
+    cv.warpPerspective(binary, grid, transform, new cv.Size(450, 450));
+    let horizontal = 0, vertical = 0;
+    for (let line = 1; line < 9; line++) {
+      let bestH = 0, bestV = 0;
+      for (let offset = -4; offset <= 4; offset++) {
+        const at = line * 50 + offset;
+        let h = 0, v = 0;
+        for (let index = 5; index < 445; index++) {
+          if (grid.data[at * 450 + index] > 127) h++;
+          if (grid.data[index * 450 + at] > 127) v++;
+        }
+        bestH = Math.max(bestH, h); bestV = Math.max(bestV, v);
+      }
+      if (bestH >= 220) horizontal++;
+      if (bestV >= 220) vertical++;
+    }
+    return horizontal >= 6 && vertical >= 6;
+  });
+}
+
+/** Normalized crop suggestion; all detection runs in the local OpenCV worker. */
+export function detectBoard(cv: Cv, frame: ImageData): Bounds | null {
+  return scope(own => {
+    const source = own(cv.matFromImageData(frame)), gray = own(new cv.Mat());
+    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
+    const scaled = own(new cv.Mat());
+    const scale = Math.min(1, 1400 / Math.max(gray.cols, gray.rows));
+    cv.resize(gray, scaled, new cv.Size(Math.round(gray.cols * scale), Math.round(gray.rows * scale)), 0, 0, cv.INTER_AREA);
+    const outline = findGridOutline(cv, scaled, true);
+    if (!outline) return null;
+    // Retain a small margin so the crop includes the complete outer stroke.
+    const margin = 3;
+    const left = Math.max(0, Math.min(...outline.map(([x]) => x)) - margin);
+    const top = Math.max(0, Math.min(...outline.map(([, y]) => y)) - margin);
+    const right = Math.min(scaled.cols, Math.max(...outline.map(([x]) => x)) + margin + 1);
+    const bottom = Math.min(scaled.rows, Math.max(...outline.map(([, y]) => y)) + margin + 1);
+    return { x: left / scaled.cols, y: top / scaled.rows, width: (right - left) / scaled.cols, height: (bottom - top) / scaled.rows };
+  });
+}
+
+/** Detect and warp the grid before splitting it into 81 centered cell images. */
+export function extractDigits(cv: Cv, frame: ImageData, alreadyCropped = false): ExtractedDigit[] {
+  return scope(own => {
+    const source = own(cv.matFromImageData(frame)), gray = own(new cv.Mat());
+    cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
+    const outline = findGridOutline(cv, gray) ?? (alreadyCropped ? [
+      [0, 0], [gray.cols - 1, 0], [gray.cols - 1, gray.rows - 1], [0, gray.rows - 1],
+    ] as Point[] : null);
     if (!outline) throw new Error("Could not find a Sudoku grid. Use a crop with the full outer border visible.");
-    const sorted = (score: (point: [number, number]) => number) => [...outline!].sort((a, b) => score(a) - score(b));
-    const sums = sorted(([x, y]) => x + y), diffs = sorted(([x, y]) => y - x);
-    const points = own(cv.matFromArray(4, 1, cv.CV_32FC2, [sums[0], diffs[0], sums[3], diffs[3]].flat()));
+    const points = own(cv.matFromArray(4, 1, cv.CV_32FC2, orderedPoints(outline).flat()));
     const target = own(cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, 449, 0, 449, 449, 0, 449]));
     const transform = own(cv.getPerspectiveTransform(points, target)), warped = own(new cv.Mat());
     cv.warpPerspective(gray, warped, transform, new cv.Size(450, 450));

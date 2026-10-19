@@ -3,6 +3,7 @@
 import { Check, CircleAlert, Gauge, Pause, PartyPopper, Play, Timer } from "lucide-react";
 
 import { FinishDialog } from "../components/FinishDialog";
+import { ImageCropDialog } from "../components/ImageCropDialog";
 import { Keypad } from "../components/Keypad";
 import { LoadingControls } from "../components/LoadingControls";
 import { SolvingControls } from "../components/SolvingControls";
@@ -211,6 +212,10 @@ export default function PseudokuPage() {
         accept="image/*"
         onChange={(event) => void imageImport.handleUpload(event)}
       />
+
+      {imageImport.pendingImage ? (
+        <ImageCropDialog file={imageImport.pendingImage} onImport={imageImport.importCrop} onCancel={imageImport.cancelCrop} />
+      ) : null}
 
       {game.showFinishDialog ? (
         <FinishDialog

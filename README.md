@@ -17,8 +17,6 @@ The app runs entirely in your browser. All puzzle selection, validation, solving
 hints, and image parsing happen on your device. There are no accounts, databases,
 app servers, or external runtime services.
 
-Repository: [nguyenvuminhh/sudoku-parser-hinter-generator-pseudoku](https://github.com/nguyenvuminhh/sudoku-parser-hinter-generator-pseudoku).
-
 Live app: [pseudoku.duckdns.org](https://pseudoku.duckdns.org).
 
 ## Tutorial
@@ -77,6 +75,23 @@ Live app: [pseudoku.duckdns.org](https://pseudoku.duckdns.org).
 
 ## Image parsing: a worked example
 
+Uploading, pasting, or dropping an image opens a local crop preview before OCR.
+Adjust the suggested rectangle by dragging its corners or entering percentage
+boundaries, then choose **Use crop**. Choose **No crop — already cropped** to
+use the original image, or cancel to keep the current puzzle.
+
+Crop suggestions reuse the OpenCV grid detector in a browser worker. Detection
+uses a grayscale preview capped at 1400 pixels on its longest side, Gaussian
+blur, adaptive thresholding, and convex four-corner contours. It checks the
+largest 24 contours, including outlines nested inside other panels, down to 1%
+of image area. Each candidate is warped to a square and must contain at least
+six of the eight expected inner grid lines in each direction, with at least
+half of each line present. The first passing candidate supplies a crop with a
+small border margin. If none passes, the user can crop manually or skip cropping.
+The crop is exported at original image resolution; detection and digit
+classification stay on the device. After the user confirms the image is cropped,
+OCR can use its edges as the grid bounds if the outer border is incomplete.
+
 This example follows the real image-import pipeline using the Sudoku image below.
 It contains three large digits and a group of small pencil notes. The cell at
 **row 1, column 1** contains a **7**; the following images show its journey from
@@ -116,7 +131,9 @@ leaving the digit as white ink.
 
 Ink components within **7% of the original cell width** are grouped without
 thickening their strokes. A cell is accepted only when its ink forms one cluster
-and its longest dimension reaches **50% of the original cell width**. This skips
+and its longest dimension reaches **50% of the original cell width**. Both sides
+must also remain strictly below **90% of the inset crop width**, rejecting border
+fragments that could otherwise be classified as a one. This skips
 small pencil notes, including those in row 2, column 2 of this example.
 
 ### 3. Prepare the MNIST input

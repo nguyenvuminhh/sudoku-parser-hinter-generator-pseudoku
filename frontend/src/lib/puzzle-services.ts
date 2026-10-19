@@ -58,7 +58,7 @@ export async function requestGeneratedPuzzle(level: string): Promise<GeneratedPu
   return selectRatedPuzzle(level);
 }
 
-export async function recognizeImage(file: File): Promise<OcrResponse> {
+export async function recognizeImage(file: File, alreadyCropped = false): Promise<OcrResponse> {
   const { recognizeImageLocally } = await import("./ocr-client");
-  return recognizeImageLocally(file);
+  return recognizeImageLocally(file, alreadyCropped);
 }

@@ -1,6 +1,7 @@
 /* All image processing stays in this worker. Only local static assets are fetched. */
 const runtimeUrl = new URL("runtime/", self.location.href).href;
 let runtimePromise;
+let sessionPromise;
 function runtime() {
   if (!runtimePromise) runtimePromise = (async () => {
     self.importScripts(runtimeUrl + "opencv.js", runtimeUrl + "ort.wasm.min.js", runtimeUrl + "processing.js");
@@ -19,19 +20,18 @@ function runtime() {
     // Single-thread WASM works on static hosts without cross-origin isolation.
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.proxy = false;
-    const session = await ort.InferenceSession.create(runtimeUrl + "mnist-8.onnx", { executionProviders: ["wasm"] });
-    return { cv, ort, session };
+    return { cv, ort };
   })();
   return runtimePromise;
 }
 let queue = Promise.resolve();
 self.onmessage = ({ data }) => {
-  if (data.type !== "recognize") return;
+  if (data.type !== "recognize" && data.type !== "detect") return;
   // Serialize inference, avoiding concurrent OpenCV/WASM work on repeated uploads.
   queue = queue.then(async () => {
     let bitmap;
     try {
-      const { cv, ort, session } = await runtime();
+      const { cv, ort } = await runtime();
       bitmap = await createImageBitmap(data.file);
       const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
       const context = canvas.getContext("2d", { willReadFrequently: true });
@@ -40,7 +40,14 @@ self.onmessage = ({ data }) => {
       context.fillStyle = "white";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(bitmap, 0, 0);
-      const digits = self.OcrProcessing.extractDigits(cv, context.getImageData(0, 0, canvas.width, canvas.height));
+      const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+      if (data.type === "detect") {
+        self.postMessage({ id: data.id, bounds: self.OcrProcessing.detectBoard(cv, frame) });
+        return;
+      }
+      sessionPromise ??= ort.InferenceSession.create(runtimeUrl + "mnist-8.onnx", { executionProviders: ["wasm"] });
+      const session = await sessionPromise;
+      const digits = self.OcrProcessing.extractDigits(cv, frame, data.alreadyCropped === true);
       const cells = [];
       for (const digit of digits) {
         let prediction = { value: null, confidence: .96 };

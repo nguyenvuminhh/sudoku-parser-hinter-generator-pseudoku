@@ -17,6 +17,19 @@ describe("OCR cell eligibility", () => {
   it("accepts tall narrow digits by their longest dimension", () => {
     expect(singleInkCluster(ink([[20, 20, 5, 50]]), 100, 100, 100)).toEqual({ x: 20, y: 20, width: 5, height: 50 });
   });
+  it("requires both cluster sides to be strictly below 90% of the sampled cell width", () => {
+    expect(singleInkCluster(ink([[5, 5, 5, 89]]), 100, 100, 100)).not.toBeNull();
+    expect(singleInkCluster(ink([[5, 5, 5, 90]]), 100, 100, 100)).toBeNull();
+    expect(singleInkCluster(ink([[5, 5, 90, 5]]), 100, 100, 100)).toBeNull();
+  });
+  it("rejects borders spanning the inset crop even when shorter than the original cell", () => {
+    const vertical = new Uint8Array(42 * 42);
+    for (let y = 0; y < 42; y++) vertical[y * 42] = 255;
+    expect(singleInkCluster(vertical, 42, 42, 50)).toBeNull();
+    const horizontal = new Uint8Array(42 * 42);
+    horizontal.fill(255, 0, 42);
+    expect(singleInkCluster(horizontal, 42, 42, 50)).toBeNull();
+  });
   it("merges at 7% of original cell width, but rejects components beyond it", () => {
     expect(singleInkCluster(ink([[5, 20, 25, 40], [36, 20, 29, 40]]), 100, 100, 100)).not.toBeNull();
     expect(singleInkCluster(ink([[5, 20, 25, 40], [37, 20, 28, 40]]), 100, 100, 100)).toBeNull();

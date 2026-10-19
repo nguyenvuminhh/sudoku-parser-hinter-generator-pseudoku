@@ -976,10 +976,10 @@ export function useSudokuGame() {
     return phase === "loading" || !givenMask[index];
   }
 
-  async function importImageFile(file: File) {
+  async function importImageFile(file: File, alreadyCropped = false) {
     setBusyLabel("Reading image");
     try {
-      const result = await recognizeImage(file);
+      const result = await recognizeImage(file, alreadyCropped);
       const applied = applyOcrCells(createEmptyGrid(), result.cells);
       loadPuzzle(applied.grid, result.warnings);
       setLowConfidence(applied.lowConfidence);

@@ -7,9 +7,27 @@ import type { SudokuGame } from "./useSudokuGame";
 
 export function useImageImport(game: SudokuGame) {
   const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [pendingImage, setPendingImage] = useState<File | null>(null);
+  const pendingRef = useRef<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gameRef = useRef(game);
   gameRef.current = game;
+
+  function prepareImage(file: File) {
+    if (pendingRef.current || gameRef.current.busyLabel || gameRef.current.phase !== "loading") return;
+    pendingRef.current = file;
+    setPendingImage(file);
+  }
+
+  function cancelCrop() {
+    pendingRef.current = null;
+    setPendingImage(null);
+  }
+
+  function importCrop(file: File) {
+    cancelCrop();
+    void gameRef.current.importImageFile(file, true);
+  }
 
   useEffect(() => {
     function handleWindowPaste(event: globalThis.ClipboardEvent) {
@@ -21,7 +39,7 @@ export function useImageImport(game: SudokuGame) {
       const file = firstImageFile(event.clipboardData);
       if (file) {
         event.preventDefault();
-        void current.importImageFile(file);
+        prepareImage(file);
       }
     }
 
@@ -33,10 +51,10 @@ export function useImageImport(game: SudokuGame) {
     fileInputRef.current?.click();
   }
 
-  async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
+  function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (file) {
-      await game.importImageFile(file);
+      prepareImage(file);
     }
     event.target.value = "";
   }
@@ -64,13 +82,16 @@ export function useImageImport(game: SudokuGame) {
     setIsDraggingImage(false);
     const file = firstImageFile(event.dataTransfer);
     if (file) {
-      void game.importImageFile(file);
+      prepareImage(file);
     } else {
       game.notify("Drop a PNG or JPG screenshot of a Sudoku grid.");
     }
   }
 
   return {
+    pendingImage,
+    cancelCrop,
+    importCrop,
     isDraggingImage,
     fileInputRef,
     openFilePicker,
